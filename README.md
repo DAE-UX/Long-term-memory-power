@@ -72,6 +72,3 @@ The memory lives in an `ltm/` folder at your project root. It uses plain JSONL f
 ## License
 
 MIT
-
-
-<!-- v1.0.2 -->
