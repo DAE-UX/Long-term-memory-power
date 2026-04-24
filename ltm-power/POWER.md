@@ -20,64 +20,62 @@ keywords:
 
 # Local Long-Term Memory
 
-Give your Kiro agent project-local memory that persists across sessions. The agent tracks what files changed, saves checkpoints with decisions and open threads, and recalls past work cheaply — without re-exploring the entire project.
+Project-local memory that persists across sessions. Tracks file changes, saves checkpoints with decisions and threads, and recalls past work cheaply — no re-exploration needed.
 
 ## Getting started
 
-Say **"Remember this project."** to bootstrap the memory system.
+Say **"Remember this project."**
 
 ## How recall works
 
-Memory uses progressive disclosure with three tiers:
+Three tiers of progressive disclosure:
 
-- **Tier 1** (~50 tokens): Recent files and session summaries. Enough to orient the agent in most cases.
-- **Tier 2** (~200 tokens): Focused search across checkpoints, decisions, and threads.
-- **Tier 3** (~500 tokens): Full session detail for deep investigation.
+- **Tier 1** (~50 tokens): Recent files and sessions. Handles most cases.
+- **Tier 2** (~200 tokens): Search across checkpoints, decisions, threads.
+- **Tier 3** (~500 tokens): Full session detail.
 
-The agent starts at Tier 1 and escalates only when needed. Raw ledger files are never injected into context.
+Starts at Tier 1, escalates only when needed. Raw ledgers never enter context.
 
 ## Onboarding
 
 ### Step 1: Validate Python
-
-Check for a working Python interpreter:
 
 ```bash
 python3 --version   # try first
 python --version    # fallback
 ```
 
-Require Python 3.9 or later. Store the working command as `python_cmd`. If neither is available, follow the degraded bootstrap path in `ltm-bootstrap.md` — the system will work in manual mode without automatic capture.
+Require 3.9+. Store as `python_cmd`. If unavailable, follow degraded path in `ltm-bootstrap.md`.
 
-### Step 2: Check for existing memory
+### Step 2: Check existing memory
 
-If `ltm/` already exists at the project root, check `ltm/config.json` for `"created_by": "ltm-power"`:
-- If healthy: report existing memory and offer recall/purge options.
-- If damaged: run repair from `ltm-failure-recovery.md`.
+If `ltm/` exists, check `ltm/config.json` for `"created_by": "ltm-power"`:
+- Healthy → report and offer recall/purge.
+- Damaged → repair via `ltm-failure-recovery.md`.
 
 ### Step 3: Bootstrap
 
-If `ltm/` does not exist, read `ltm-bootstrap.md` and execute the full bootstrap workflow.
+If no `ltm/`, read `ltm-bootstrap.md` and execute.
 
-## Available commands
+## Commands
 
 | You say | What happens |
 |---------|-------------|
-| "Remember this project." | Bootstrap the LTM scaffold |
-| "Pick up where we left off." | Recall recent work |
-| "Save a checkpoint." | Write a milestone summary |
-| "Forget the last session." | Remove only the latest session |
-| "Forget everything." | Clear all memory, keep structure |
+| "Remember this project." | Bootstrap |
+| "Pick up where we left off." | Recall |
+| "Save a checkpoint." | Milestone summary |
+| "Forget the last session." | Purge latest session |
+| "Forget everything." | Clear all memory |
 | "Remove LTM from this project." | Full teardown |
-| "Validate memory." | Run health check |
-| "Repair memory." | Fix missing or damaged files |
+| "Validate memory." | Health check |
+| "Repair memory." | Fix damaged files |
 
 ## When to Load Steering Files
 
-- Bootstrapping or setting up LTM → `ltm-bootstrap.md`
-- Writing ltm.py to a project → `ltm-script-source.md`
-- Understanding capture rules → `ltm-capture-policy.md`
-- Performing recall or resume → `ltm-recall-workflow.md`
-- Purging or resetting memory → `ltm-purge-and-reset.md`
-- Validating or testing memory → `ltm-validation-policy.md`
-- Recovering from errors → `ltm-failure-recovery.md`
+- Bootstrapping → `ltm-bootstrap.md`
+- Writing ltm.py → `ltm-script-source.md`
+- Capture rules → `ltm-capture-policy.md`
+- Recall/resume → `ltm-recall-workflow.md`
+- Purge/reset → `ltm-purge-and-reset.md`
+- Validation → `ltm-validation-policy.md`
+- Recovery → `ltm-failure-recovery.md`

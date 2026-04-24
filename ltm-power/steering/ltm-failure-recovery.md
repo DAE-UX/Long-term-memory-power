@@ -2,55 +2,34 @@
 
 ## Degraded mode
 
-If `ltm.py` fails or Python is unavailable, the agent reads and writes JSONL files directly using its file tools. This is more expensive in credits but functional.
+If `ltm.py` fails or Python is unavailable, the agent reads/writes JSONL files directly. More expensive in credits but functional.
 
-**Rules in degraded mode:**
-- Follow the same capture policy: no chain-of-thought, no full transcripts, no secrets.
-- Use the same JSONL field formats documented in `ltm-memory-format.md`.
-- Apply the same redaction patterns.
-- Read `ltm/runtime/active-context.json` and `ltm/runtime/last-recall.md` for recall.
+**Rules:** Same capture policy applies — no chain-of-thought, no transcripts, no secrets. Use formats from `ltm-memory-format.md`. Apply redaction patterns.
 
-## If Python is unavailable
+## Recovery scenarios
 
-The agent performs all capture and query operations directly. Automatic capture via hooks is disabled. The user must explicitly ask for checkpoints and recall.
+### Python unavailable
+Agent performs all operations directly. Hooks disabled. User must explicitly request checkpoints and recall.
 
-## If runtime artifacts are missing
+### Runtime artifacts missing
+1. Read recent entries from ledger files.
+2. Generate `active-context.json` and `last-recall.md` per format specs.
+3. If `ltm.py` available: `<python_cmd> ltm/bin/ltm.py regenerate`.
 
-The agent regenerates them from ledger data:
-1. Read recent entries from `events.jsonl`, `sessions.jsonl`, `checkpoints.jsonl`, `open_threads.jsonl`.
-2. Generate `active-context.json` and `last-recall.md` following the format specs.
-3. If `ltm.py` is available, run `<python_cmd> ltm/bin/ltm.py regenerate` instead.
+### Ledger files corrupted
+Run: `<python_cmd> ltm/bin/ltm.py repair`
 
-## If ledger files are corrupted
+- Recreates missing directories and files.
+- Removes only incomplete trailing lines (not valid JSON).
+- Preserves complete records even if schema-invalid — `validate` reports those.
+- Emits health report after repair.
 
-Run repair: `<python_cmd> ltm/bin/ltm.py repair`
+### Hooks disabled
+System works without hooks — no automated capture. Agent captures manually when instructed. Recall and checkpoints work normally.
 
-Repair behavior:
-- Recreate missing directories and files with empty/placeholder content.
-- Remove only incomplete trailing lines from JSONL files (lines that are not valid JSON).
-- Preserve complete JSON records even if they fail schema validation — `validate` reports those records.
-- Emit health report after repair.
+### Hook fires but capture fails
+Errors go to stderr (warning to user). Events may be lost if failures repeat. `health` detects stale timestamps and reports `degraded` capture coverage.
 
-## If hooks are disabled
-
-The system works without hooks — just without automated capture. The agent can perform capture manually when instructed. Recall and checkpoints work normally.
-
-## If the hook fires but capture fails
-
-The capture script writes errors to stderr (shown as a warning to the user). Events may be silently lost if the script fails repeatedly. The `health` command detects this through stale event timestamps and reports `degraded` capture coverage.
-
-## Repair command reference
-
-```bash
-<python_cmd> ltm/bin/ltm.py repair
-```
-
-This command:
-- Recreates missing `ltm/` subdirectories.
-- Recreates missing JSONL files as empty files.
-- Recreates missing runtime files with placeholder content.
-- Truncates incomplete trailing lines in JSONL files.
-- Does NOT delete complete records, even if they have invalid fields.
-- Reports what was repaired to stdout.
+---
 
 Read `python_cmd` from `ltm/config.json`.

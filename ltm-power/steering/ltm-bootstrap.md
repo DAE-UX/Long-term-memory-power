@@ -1,24 +1,21 @@
 # LTM Bootstrap
 
-This file contains the complete bootstrap workflow for setting up LTM in a project. It is loaded only when the user says "Remember this project" or equivalent bootstrap phrases.
+> **TL;DR:** Creates the `ltm/` memory layer, `ltm/bin/ltm.py` CLI, a capture hook, workspace steering files, and a `.gitignore` block. Checks for Python 3.9+, conflicts, and existing installations before proceeding. Falls back to degraded mode without Python.
 
 ## Prerequisites
 
-Before bootstrapping, the agent must:
+1. **Detect Python:** Try `python3 --version`, then `python --version`. Require >= 3.9. Store the working command as `python_cmd`. If unavailable, follow Degraded Bootstrap below.
+2. **Check platform:** If Windows (`os.name == "nt"`), warn: "Windows is not a tested v1 target."
+3. **Check conflicts:** Look for existing `.kiro/hooks/ltm-*.kiro.hook` or `.kiro/steering/ltm-*.md`. If found, report and ask before proceeding.
+4. **Check existing `ltm/`:** If it exists with `config.json` containing `"created_by": "ltm-power"`, follow Case B or C below. If it exists without the marker, report conflict and ask.
 
-1. **Detect Python:** Try `python3 --version`, then `python --version`. Require >= 3.9. Store the working command. If neither is available, follow the Degraded Bootstrap section below.
-2. **Check for Windows:** If `os.name == "nt"`, warn: "Windows is not a tested v1 target. LTM may work but hooks and shell commands may require manual adjustment."
-3. **Check for conflicts:** Look for existing `.kiro/hooks/ltm-*.kiro.hook` or `.kiro/steering/ltm-*.md` files. If found, report and ask before proceeding.
-4. **Check for existing `ltm/`:** If it exists with `config.json` containing `"created_by": "ltm-power"`, follow Case B (re-bootstrap) or Case C (repair) from the action plan. If it exists without the marker, report conflict and ask the user.
+## Case A — Fresh install
 
-## Bootstrap steps (Case A — fresh install)
-
-Create the following structure. All paths are relative to the project root.
+All paths relative to project root.
 
 ### 1. Create directories
 
 ```
-ltm/
 ltm/store/
 ltm/runtime/
 ltm/reports/
@@ -27,8 +24,6 @@ ltm/bin/
 ```
 
 ### 2. Create `ltm/config.json`
-
-Replace `<python_cmd>` with the detected interpreter (`python3` or `python`).
 
 ```json
 {
@@ -46,15 +41,14 @@ Replace `<python_cmd>` with the detected interpreter (`python3` or `python`).
 }
 ```
 
-### 3. Create empty ledger files
+### 3. Create empty ledger files (0 bytes)
 
-Create these as empty files (0 bytes):
 - `ltm/store/events.jsonl`
 - `ltm/store/checkpoints.jsonl`
 - `ltm/store/sessions.jsonl`
 - `ltm/store/open_threads.jsonl`
 
-### 4. Create placeholder runtime files
+### 4. Create runtime placeholders
 
 **`ltm/runtime/active-context.json`:**
 ```json
@@ -111,46 +105,41 @@ Say "Save a checkpoint" after completing meaningful work.
 }
 ```
 
-Create `.gitkeep` files in `ltm/reports/` and `ltm/snapshots/`.
+Create `.gitkeep` in `ltm/reports/` and `ltm/snapshots/`.
 
 ### 5. Create `ltm/README.md`
 
 ```markdown
 # ltm/ — Local Long-Term Memory
 
-This directory contains project-local memory managed by ltm-power.
+Project-local memory managed by ltm-power.
 
-## Commit policy
+## Commit policy: repo-portable tooling, local-private memory
 
-v1 uses **repo-portable tooling with local-private memory data**.
+**Commit:** `ltm/bin/ltm.py`, `ltm/config.json`, `ltm/manifest.json`, this README.
+**Do NOT commit:** `ltm/store/`, `ltm/runtime/`, `ltm/reports/`, `ltm/snapshots/`.
 
-**Safe to commit:** `ltm/bin/ltm.py`, `ltm/config.json`, `ltm/manifest.json`, this README.
+If the hook uses an absolute path, review `.kiro/hooks/ltm-postturn-capture.kiro.hook` before committing.
 
-**Do NOT commit:** `ltm/store/`, `ltm/runtime/`, `ltm/reports/`, `ltm/snapshots/` — these contain local memory data and are gitignored.
+## Commands
 
-If the hook command was changed to use an absolute path, review `.kiro/hooks/ltm-postturn-capture.kiro.hook` before committing — absolute hook commands are machine-specific.
+Read `python_cmd` from `ltm/config.json`.
 
-## Quick reference
-
-Read `python_cmd` from `ltm/config.json` for the correct interpreter.
-
-- Recall: `<python_cmd> ltm/bin/ltm.py files --limit 10`
-- Health: `<python_cmd> ltm/bin/ltm.py health`
-- Checkpoint: `<python_cmd> ltm/bin/ltm.py checkpoint --summary "..."`
-- Validate: `<python_cmd> ltm/bin/ltm.py validate`
-- Repair: `<python_cmd> ltm/bin/ltm.py repair`
-- Purge last: `<python_cmd> ltm/bin/ltm.py purge-last --confirm`
-- Purge all: `<python_cmd> ltm/bin/ltm.py purge-all --confirm`
-- Teardown: `<python_cmd> ltm/bin/ltm.py teardown --confirm`
+- `<python_cmd> ltm/bin/ltm.py files --limit 10`
+- `<python_cmd> ltm/bin/ltm.py health`
+- `<python_cmd> ltm/bin/ltm.py checkpoint --summary "..."`
+- `<python_cmd> ltm/bin/ltm.py validate`
+- `<python_cmd> ltm/bin/ltm.py repair`
+- `<python_cmd> ltm/bin/ltm.py purge-last --confirm`
+- `<python_cmd> ltm/bin/ltm.py purge-all --confirm`
+- `<python_cmd> ltm/bin/ltm.py teardown --confirm`
 ```
 
 ### 6. Generate `ltm/bin/ltm.py`
 
-Write the literal Python source below to `ltm/bin/ltm.py`. After writing, compute the SHA-256 hash of the file. The expected hash is recorded at the end of this section. If the hashes don't match, report a generation error.
+Read `ltm-script-source.md` and write its fenced code block contents to `ltm/bin/ltm.py`. Verify the SHA-256 hash matches the expected value in that file.
 
-The full `ltm.py` source is provided in the next section of this file.
-
-### 7. Create the capture hook
+### 7. Create capture hook
 
 Write to `.kiro/hooks/ltm-postturn-capture.kiro.hook`:
 
@@ -159,9 +148,7 @@ Write to `.kiro/hooks/ltm-postturn-capture.kiro.hook`:
   "name": "LTM Post-Turn Capture",
   "version": "1.0.0",
   "description": "Records agent activity to LTM memory store after each turn",
-  "when": {
-    "type": "agentStop"
-  },
+  "when": { "type": "agentStop" },
   "then": {
     "type": "runCommand",
     "command": "<python_cmd> ltm/bin/ltm.py capture-turn"
@@ -173,13 +160,80 @@ Replace `<python_cmd>` with the detected interpreter.
 
 ### 8. Create workspace steering files
 
-**`.kiro/steering/ltm-operations.md`** — see the workspace steering content in the action plan §10.1. Replace all `<python_cmd>` placeholders with the detected interpreter.
+**`.kiro/steering/ltm-operations.md`:**
 
-**`.kiro/steering/ltm-memory-format.md`** — see the workspace steering content in the action plan §10.2.
+```markdown
+---
+inclusion: auto
+name: ltm-operations
+description: "LTM memory operations. Activates when the user asks to resume work, continue previous tasks, recall past decisions, or reference project memory."
+---
+
+## Recall
+
+1. Run `<python_cmd> ltm/bin/ltm.py files --limit 10` and `<python_cmd> ltm/bin/ltm.py sessions --limit 5`.
+2. For specific past work: `<python_cmd> ltm/bin/ltm.py search "term"` or `<python_cmd> ltm/bin/ltm.py checkpoints --days 3`.
+3. For a specific session: `<python_cmd> ltm/bin/ltm.py show <session_id>`.
+4. Fallback: read `ltm/runtime/active-context.json` and `ltm/runtime/last-recall.md`.
+5. Optional: `git status --short` and `git log --oneline -5`.
+6. Use recall to orient. Do not explore broadly if recall is sufficient.
+
+## Checkpoints
+
+1. Read recent events from `ltm/store/events.jsonl` (last 20 entries).
+2. Prepare checkpoint JSON with summary, changed_files, decisions, open_threads, next_actions.
+3. Run `<python_cmd> ltm/bin/ltm.py checkpoint --from-json <path>`.
+4. Fallback: write directly to `ltm/store/checkpoints.jsonl` per `ltm-memory-format.md`.
+5. Regenerate: `<python_cmd> ltm/bin/ltm.py regenerate`.
+
+## Caps
+
+- `last-recall.md`: max 400 words.
+- `active-context.json`: max 8KB (preferred 2KB).
+- Never inject raw ledger files into context.
+
+## Maintenance
+
+- Health: `<python_cmd> ltm/bin/ltm.py health`
+- Validate: `<python_cmd> ltm/bin/ltm.py validate`
+- Repair: `<python_cmd> ltm/bin/ltm.py repair`
+- Purge last: `<python_cmd> ltm/bin/ltm.py purge-last --confirm`
+- Purge all: `<python_cmd> ltm/bin/ltm.py purge-all --confirm`
+- Teardown: `<python_cmd> ltm/bin/ltm.py teardown --confirm`
+- Selftest: `<python_cmd> ltm/bin/ltm.py selftest`
+
+Read `python_cmd` from `ltm/config.json`.
+```
+
+Replace all `<python_cmd>` with the detected interpreter.
+
+**`.kiro/steering/ltm-memory-format.md`:**
+
+```markdown
+---
+inclusion: fileMatch
+fileMatchPattern: "ltm/**/*"
+---
+
+## LTM record formats
+
+### events.jsonl
+Each line: {"id": "evt_NNNNNN", "ts": "ISO-8601", "type": "file_write|checkpoint|manual_note", "summary": "", "files_changed_count": N, "files_sample": ["path", ...], "branch": "string", "session_id": "sess_...", "source": "hook:agentStop|agent:checkpoint|user:manual", "git_status": "ok|unavailable|not_repo|timeout|error", "tags": [], "redacted": false}
+
+### checkpoints.jsonl
+Each line: {"id": "chk_NNNNNN", "ts": "ISO-8601", "summary": "text", "changed_files": [], "decisions": [{"decision": "text", "rationale": "text"}], "open_threads": ["thread_id"], "next_actions": ["text"], "session_id": "sess_..."}
+
+### sessions.jsonl
+Each line: {"session_id": "sess_...", "started_at": "ISO-8601", "ended_at": "ISO-8601", "summary": "text", "recent_files": [], "checkpoints_created": [], "unresolved_items": [], "next_recommended_action": "text"}
+
+### open_threads.jsonl
+Each line: {"thread_id": "thread_NNNNNN", "ts_opened": "ISO-8601", "summary": "text", "status": "open|resolved", "linked_files": [], "last_touched": "ISO-8601"}
+
+### Secret redaction
+Check for: sk_live_, sk_test_, AKIA, ghp_, gho_, -----BEGIN, Bearer, base64 strings 40+ chars. Replace with [REDACTED].
+```
 
 ### 9. Append to `.gitignore`
-
-Append this block to the project's `.gitignore` (create the file if it doesn't exist):
 
 ```gitignore
 # --- ltm-power ---
@@ -199,73 +253,68 @@ ltm/snapshots/*
   "created_at": "<ISO-8601-now>",
   "ltm_py_hash": "<SHA-256 of ltm/bin/ltm.py>",
   "files": [
-    "ltm/README.md",
-    "ltm/config.json",
-    "ltm/manifest.json",
-    "ltm/store/events.jsonl",
-    "ltm/store/checkpoints.jsonl",
-    "ltm/store/sessions.jsonl",
-    "ltm/store/open_threads.jsonl",
-    "ltm/runtime/active-context.json",
-    "ltm/runtime/last-recall.md",
-    "ltm/runtime/current-session.json",
-    "ltm/runtime/health.json",
+    "ltm/README.md", "ltm/config.json", "ltm/manifest.json",
+    "ltm/store/events.jsonl", "ltm/store/checkpoints.jsonl",
+    "ltm/store/sessions.jsonl", "ltm/store/open_threads.jsonl",
+    "ltm/runtime/active-context.json", "ltm/runtime/last-recall.md",
+    "ltm/runtime/current-session.json", "ltm/runtime/health.json",
     "ltm/bin/ltm.py"
   ],
-  "hooks": [
-    ".kiro/hooks/ltm-postturn-capture.kiro.hook"
-  ],
-  "steering": [
-    ".kiro/steering/ltm-operations.md",
-    ".kiro/steering/ltm-memory-format.md"
-  ],
-  "managed_patches": [
-    {
-      "file": ".gitignore",
-      "start_delimiter": "# --- ltm-power ---",
-      "end_delimiter": "# --- /ltm-power ---"
-    }
-  ]
+  "hooks": [".kiro/hooks/ltm-postturn-capture.kiro.hook"],
+  "steering": [".kiro/steering/ltm-operations.md", ".kiro/steering/ltm-memory-format.md"],
+  "managed_patches": [{"file": ".gitignore", "start_delimiter": "# --- ltm-power ---", "end_delimiter": "# --- /ltm-power ---"}]
 }
 ```
 
-### 11. Verify installation
+### 11. Verify
 
 ```bash
 <python_cmd> ltm/bin/ltm.py health
 <python_cmd> ltm/bin/ltm.py selftest --quick
 ```
 
-### 12. Verify hook activation
+### 12. Verify hook
 
-Ask the user to confirm the "LTM Post-Turn Capture" hook appears in Kiro's Agent Hooks panel. If it does not appear, provide manual setup instructions. Record `hook_status` in `health.json` as `verified` or `manual_setup_required`.
+Ask the user to confirm "LTM Post-Turn Capture" appears in Kiro's Agent Hooks panel. If not, provide manual setup instructions. Record `hook_status` as `verified` or `manual_setup_required`.
 
 ### 13. Report success
 
-Tell the user:
 - "I'll track meaningful agent turns automatically."
 - "Say 'Save a checkpoint' after milestones."
-- "Say 'What do you remember?' or 'Pick up where we left off' to recall."
+- "Say 'What do you remember?' to recall."
 - "Say 'Validate memory' if recall seems stale."
 - "Say 'Forget the last session' or 'Forget everything' to purge."
 
-## Degraded bootstrap (Python unavailable)
+---
 
-If neither `python3` nor `python` >= 3.9 is available:
+## Case B — Healthy existing install
 
-1. Create `ltm/` directory structure (store/, runtime/, reports/, snapshots/). Do NOT create `ltm/bin/`.
-2. Create `ltm/config.json` with `"python_cmd": null`, `"script_status": "unavailable"`, `"mode": "degraded-agent-managed"`.
-3. Create empty JSONL ledger files and placeholder runtime files.
-4. Create `ltm/README.md`.
-5. Create `ltm/manifest.json` (without `ltm_py_hash`).
-6. Do NOT create the `agentStop` `runCommand` hook.
-7. Create workspace steering files that explain agent-driven manual capture/recall.
-8. Set `hook_status: "disabled"` and `script_status: "unavailable"` in `health.json`.
-9. Append `.gitignore` block.
-10. Report: "LTM is installed in degraded mode. Automatic capture is unavailable until Python 3.9+ is installed."
+1. Read `ltm/config.json` to confirm ownership.
+2. Run `<python_cmd> ltm/bin/ltm.py health`.
+3. Report: "This project already has long-term memory. Say 'What do you remember?' for a summary, or 'Forget everything' to reset."
+
+## Case C — Damaged existing install
+
+1. Read `ltm/config.json` to confirm ownership.
+2. Report: "Found existing memory with missing or corrupted files. Repairing without losing data."
+3. Run repair, then health check. Report results.
 
 ---
 
-## `ltm.py` source
+## Degraded bootstrap (no Python)
 
-Read `ltm-script-source.md` and write its contents to `ltm/bin/ltm.py`. That steering file contains the canonical script source and the expected SHA-256 hash for verification.
+1. Create `ltm/` structure (store/, runtime/, reports/, snapshots/). No `ltm/bin/`.
+2. Create `ltm/config.json` with `"python_cmd": null`, `"script_status": "unavailable"`, `"mode": "degraded-agent-managed"`.
+3. Create empty ledgers and runtime placeholders.
+4. Create `ltm/README.md` and `ltm/manifest.json` (no `ltm_py_hash`).
+5. Do NOT create the capture hook.
+6. Create workspace steering for agent-driven manual capture/recall.
+7. Set `hook_status: "disabled"` in `health.json`.
+8. Append `.gitignore` block.
+9. Report: "LTM installed in degraded mode. Automatic capture unavailable until Python 3.9+ is installed."
+
+---
+
+## Script source
+
+Read `ltm-script-source.md` for the canonical `ltm.py` source and SHA-256 hash.
