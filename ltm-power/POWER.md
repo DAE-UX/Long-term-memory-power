@@ -16,6 +16,8 @@ keywords:
   - "reset memory"
   - "forget"
   - "what do you remember"
+  - "update ltm"
+  - "update memory"
 ---
 
 # Local Long-Term Memory
@@ -69,6 +71,7 @@ If no `ltm/`, read `ltm-bootstrap.md` and execute.
 | "Remove LTM from this project." | Full teardown |
 | "Validate memory." | Health check |
 | "Repair memory." | Fix damaged files |
+| "Update LTM." | Update the LTM tooling to the latest version |
 
 ## When to Load Steering Files
 
@@ -79,3 +82,4 @@ If no `ltm/`, read `ltm-bootstrap.md` and execute.
 - Purge/reset → `ltm-purge-and-reset.md`
 - Validation → `ltm-validation-policy.md`
 - Recovery → `ltm-failure-recovery.md`
+- Updating LTM tooling → `ltm-update.md`

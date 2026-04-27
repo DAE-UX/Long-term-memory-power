@@ -48,6 +48,7 @@ The memory lives in an `ltm/` folder at your project root. It uses plain JSONL f
 | "Remove LTM from this project." | Full teardown, no orphaned files |
 | "Validate memory." | Run health check |
 | "Repair memory." | Fix missing or damaged files |
+| "Update LTM." | Update tooling to the latest version without losing memory |
 
 ## Requirements
 

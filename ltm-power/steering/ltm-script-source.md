@@ -2,7 +2,7 @@
 
 This file contains the canonical `ltm.py` source code. It is loaded only when the agent needs to write the script to a project — during bootstrap or repair.
 
-**Expected SHA-256:** `bbfec43992c3fd2a454c80bce9d99dc501ecffc1923b0427200180d4b963a8cf`
+**Expected SHA-256:** `0e5733a73e61887657bf396aeafb9b0cc3b6c5218583eec89cb7fecf58597092`
 
 Write the contents of the fenced code block below exactly to `ltm/bin/ltm.py`. After writing, verify the SHA-256 hash matches the expected value above. If it does not match, report a generation error.
 
@@ -16,7 +16,7 @@ Reads/writes JSONL ledgers under ltm/store/ and runtime artifacts under ltm/runt
 import argparse, datetime, fnmatch, hashlib, json, os, re, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 ROOT = Path("ltm")
 STORE = ROOT / "store"
 RUNTIME = ROOT / "runtime"
@@ -44,6 +44,14 @@ SHOW_EVENT_MAX = 50
 COMPACT_THRESHOLD = 500_000  # bytes
 COMPACT_HARD_LINES = 50_000
 COMPACT_HARD_BYTES = 5_000_000
+
+# ── exit codes ───────────────────────────────────────────────────────────────
+
+EXIT_OK = 0
+EXIT_DEGRADED = 2
+EXIT_INVALID = 3
+EXIT_IO_ERROR = 4
+EXIT_USAGE = 64
 
 SECRET_PATTERNS = [
     re.compile(r'sk_live_\S+'), re.compile(r'sk_test_\S+'), re.compile(r'AKIA\S{16,}'),
@@ -84,10 +92,25 @@ def _append_jsonl(path, record):
         f.write(json.dumps(record, separators=(",", ":")) + "\n")
 
 def _write_jsonl(path, records):
+    """Atomic rewrite: write to temp file, then os.replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
         for r in records:
             f.write(json.dumps(r, separators=(",", ":")) + "\n")
+    os.replace(tmp, path)
+
+def _atomic_write_text(path, text):
+    """Atomic text write: write to temp file, then os.replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+def _event_fingerprint(files_sample, git_status, session_id):
+    """Content-based fingerprint for deduplication."""
+    data = json.dumps({"f": sorted(files_sample), "g": git_status, "s": session_id}, sort_keys=True)
+    return hashlib.sha256(data.encode()).hexdigest()[:16]
 
 def _next_id(path, prefix):
     records = _read_jsonl(path)
@@ -207,6 +230,18 @@ def cmd_capture_turn(args):
     # build event
     branch_result = _git("branch", "--show-current")
     branch = branch_result[0] if isinstance(branch_result, list) and branch_result else ""
+    # content-based dedup: skip if same fingerprint within 2 seconds
+    fp = _event_fingerprint(filtered, git_st, session["session_id"])
+    events = _read_jsonl(EVENTS)
+    if events:
+        last = events[-1]
+        try:
+            last_ts = datetime.datetime.fromisoformat(last["ts"].replace("Z", "+00:00"))
+            age = (datetime.datetime.now(datetime.timezone.utc) - last_ts).total_seconds()
+            if age < 2 and last.get("_fp") == fp:
+                return  # duplicate
+        except Exception:
+            pass
     evt = {
         "id": _next_id(EVENTS, "evt_"),
         "ts": _now(),
@@ -220,11 +255,12 @@ def cmd_capture_turn(args):
         "git_status": git_st,
         "tags": [],
         "redacted": was_redacted,
+        "_fp": fp,
     }
     _append_jsonl(EVENTS, evt)
     session["last_event_at"] = evt["ts"]
     session["event_count"] = session.get("event_count", 0) + 1
-    CUR_SESSION.write_text(json.dumps(session, indent=2))
+    _atomic_write_text(CUR_SESSION, json.dumps(session, indent=2))
 
 def _load_or_create_session(config):
     timeout_min = config.get("session_timeout_minutes", 60)
@@ -233,7 +269,7 @@ def _load_or_create_session(config):
     except Exception:
         session = _new_session()
         CUR_SESSION.parent.mkdir(parents=True, exist_ok=True)
-        CUR_SESSION.write_text(json.dumps(session, indent=2))
+        _atomic_write_text(CUR_SESSION, json.dumps(session, indent=2))
         return session
     last = session.get("last_event_at")
     if last:
@@ -242,7 +278,7 @@ def _load_or_create_session(config):
             if (datetime.datetime.now(datetime.timezone.utc) - last_dt).total_seconds() > timeout_min * 60:
                 _rollover_session(session)
                 session = _new_session()
-                CUR_SESSION.write_text(json.dumps(session, indent=2))
+                _atomic_write_text(CUR_SESSION, json.dumps(session, indent=2))
         except Exception:
             pass
     return session
@@ -618,7 +654,7 @@ def cmd_regenerate(args):
     if isinstance(branch, list) and branch and branch[0] not in ("main", "master", "develop"):
         ctx["inferred_workstream"] = {"value": branch[0], "source": "branch", "confidence": "medium"}
     RUNTIME.mkdir(parents=True, exist_ok=True)
-    ACTIVE_CTX.write_text(json.dumps(ctx, indent=2))
+    _atomic_write_text(ACTIVE_CTX, json.dumps(ctx, indent=2))
     # generate last-recall.md
     lines = ["## Recent work"]
     if sessions:
@@ -638,7 +674,7 @@ def cmd_regenerate(args):
             lines.append(f"- {a}")
     else:
         lines.append("No actions recorded. Save a checkpoint to add next actions.")
-    LAST_RECALL.write_text("\n".join(lines) + "\n")
+    _atomic_write_text(LAST_RECALL, "\n".join(lines) + "\n")
     _out({"regenerated": ["active-context.json", "last-recall.md"]})
 
 def cmd_compact(args):
@@ -724,7 +760,7 @@ def cmd_purge_last(args):
     _write_jsonl(CHECKPOINTS, [c for c in chks if c.get("session_id") != target_sid])
     _write_jsonl(SESSIONS, [s for s in sessions if s.get("session_id") != target_sid])
     # reset current session
-    CUR_SESSION.write_text(json.dumps(_new_session(), indent=2))
+    _atomic_write_text(CUR_SESSION, json.dumps(_new_session(), indent=2))
     _out({"purged": plan})
 
 def cmd_purge_all(args):
@@ -741,10 +777,10 @@ def cmd_purge_all(args):
         if p.is_file() and p.name != ".gitkeep":
             p.unlink()
     # recreate placeholders
-    CUR_SESSION.write_text(json.dumps(_new_session(), indent=2))
-    ACTIVE_CTX.write_text("{}")
-    LAST_RECALL.write_text("## Recent work\nNo activity recorded yet.\n")
-    HEALTH_PATH.write_text("{}")
+    _atomic_write_text(CUR_SESSION, json.dumps(_new_session(), indent=2))
+    _atomic_write_text(ACTIVE_CTX, "{}")
+    _atomic_write_text(LAST_RECALL, "## Recent work\nNo activity recorded yet.\n")
+    _atomic_write_text(HEALTH_PATH, "{}")
     # write report
     REPORTS.mkdir(parents=True, exist_ok=True)
     ts = _now().replace(":", "-")
