@@ -1,7 +1,8 @@
 ---
 name: "ltm-power"
 displayName: "Local Long-Term Memory"
-description: "Project-local long-term memory and recall for Kiro. Scaffolds an ltm/ recall layer, captures state after meaningful work, enables cheap recall for resume-style tasks, and supports selective or full memory reset."
+description: "Project-local long-term memory and recall for Kiro. Scaffolds an ltm/ recall layer, captures state after meaningful work, enables cheap recall for resume-style tasks, and supports selective or full memory reset, validation, repair, and in-place updates."
+author: "AWS"
 keywords:
   - "memory"
   - "long term memory"
@@ -82,4 +83,13 @@ If no `ltm/`, read `ltm-bootstrap.md` and execute.
 - Purge/reset → `ltm-purge-and-reset.md`
 - Validation → `ltm-validation-policy.md`
 - Recovery → `ltm-failure-recovery.md`
+- Updating LTM tooling → `ltm-update.md`
+
+## License & Support
+
+**License:** MIT — see [LICENSE](../LICENSE)
+
+**Author:** AWS
+
+**Issues & feedback:** [github.com/DAE-UX/Long-term-memory-power](https://github.com/DAE-UX/Long-term-memory-power/issues)
 - Updating LTM tooling → `ltm-update.md`
