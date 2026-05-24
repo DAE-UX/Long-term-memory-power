@@ -27,10 +27,10 @@ stm/bin/
 ```json
 {
   "created_by": "stm-power",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "created_at": "<ISO-8601-now>",
   "python_cmd": "<python_cmd>",
-  "schema_version": 1,
+  "schema_version": 2,
   "ltm_available": true,
   "consensus_threshold": 3,
   "consensus_score_minimum": 0.6,
@@ -45,11 +45,16 @@ stm/bin/
   "scopes": [],
   "scope_discovery": "auto",
   "distill_trigger": "manual",
-  "auto_distill_after_observations": 10
+  "auto_distill_after_observations": 10,
+  "sharing_mode": "local",
+  "tool_trace_enabled": true,
+  "tool_trace_max_entries": 50,
+  "scope_maturity_threshold": 5
 }
 ```
 
 Set `ltm_available` based on whether `ltm/config.json` was detected.
+Set `sharing_mode` based on user's choice during bootstrap (see Step 11b).
 
 ### 3. Create empty store files (0 bytes)
 
@@ -257,6 +262,19 @@ When about to choose an approach in a scope where you've had prior observations:
 
 This is a "have I been here before?" check, not a pre-flight checklist. Use it when entering unfamiliar territory or revisiting a scope where you've previously struggled.
 
+## Check Learnings Before Repeated Tasks
+
+Before starting work that matches a known pattern, check for applicable graduated learnings:
+
+```bash
+<python_cmd> stm/bin/stm.py learnings --cue "<what you're about to do>" --limit 3
+```
+
+If a learning applies, follow its recommendation. After completing the task, record a followup observation:
+```bash
+<python_cmd> stm/bin/stm.py record --scope <scope> --topic <topic> --stance supports --claim "<outcome>" --evidence "<what happened>" --confidence medium --source agent:followup --applies-to <cluster_id> --outcome <confirmed|mixed|failed>
+```
+
 ## Graduated Learning Template
 
 When graduating a cluster, use this format for the output file:
@@ -350,9 +368,17 @@ Replace all `<python_cmd>` with the detected interpreter.
 
 ### 9. Append to `.gitignore`
 
+If `sharing_mode` is `"local"` (default):
 ```gitignore
 # --- stm-power ---
 stm/store/*.jsonl
+stm/runtime/*
+# --- /stm-power ---
+```
+
+If `sharing_mode` is `"shared"`:
+```gitignore
+# --- stm-power ---
 stm/runtime/*
 # --- /stm-power ---
 ```
@@ -362,7 +388,7 @@ stm/runtime/*
 ```json
 {
   "created_by": "stm-power",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "created_at": "<ISO-8601-now>",
   "stm_py_hash": "<SHA-256 of stm/bin/stm.py>",
   "files": [
@@ -370,6 +396,7 @@ stm/runtime/*
     "stm/store/observations.jsonl", "stm/store/clusters.jsonl",
     "stm/runtime/status.json", "stm/runtime/current-session.json",
     "stm/runtime/merge-candidates.json", "stm/runtime/errors.jsonl",
+    "stm/runtime/tool-trace.jsonl",
     "stm/bin/stm.py"
   ],
   "hooks": [
@@ -377,7 +404,8 @@ stm/runtime/*
     ".kiro/hooks/stm-compress.kiro.hook",
     ".kiro/hooks/stm-distill.kiro.hook",
     ".kiro/hooks/stm-graduate.kiro.hook",
-    ".kiro/hooks/stm-lifecycle.kiro.hook"
+    ".kiro/hooks/stm-lifecycle.kiro.hook",
+    ".kiro/hooks/stm-tool-trace.kiro.hook"
   ],
   "steering": [
     ".kiro/steering/stm-observations.md",
@@ -405,6 +433,41 @@ If `scope_discovery` is `"auto"`:
 3. Present proposed scopes to the user for confirmation
 4. Write confirmed scopes to `config.json`
 
+### 11b. Ask Sharing Preference
+
+Ask the user: "Should introspection data be shared with the team (committed to repo) or kept local (gitignored)?"
+
+- If **shared**: set `sharing_mode` to `"shared"` in config. Explain: "Observations will be committed to the repo. All collaborators contribute to and benefit from the same introspection data. Conflicts are rare because observations use append-only JSONL with unique IDs."
+- If **local** (default): set `sharing_mode` to `"local"`. Explain: "Observations stay on your machine. Each developer has their own private introspection."
+
+Adjust the `.gitignore` block written in step 9 based on the choice.
+
+### 11c. Install Tool-Trace Hook
+
+**`.kiro/hooks/stm-tool-trace.kiro.hook`:**
+```json
+{
+  "name": "STM Tool Trace — Passive Activity Capture",
+  "version": "1.0.0",
+  "description": "Records tool invocations to stm/runtime/tool-trace.jsonl for reflection grounding.",
+  "when": { "type": "postToolUse", "toolTypes": ["write", "shell"] },
+  "then": {
+    "type": "runCommand",
+    "command": "<python_cmd> stm/bin/stm.py trace --tool \"$TOOL_NAME\" --outcome \"$TOOL_OUTCOME\""
+  }
+}
+```
+
+Note: If LTM is present and already captures tool activity via its `capture-turn` hook, the tool-trace provides supplementary current-session data. Both can coexist without conflict.
+
+### 11d. Create Learnings Directory
+
+```bash
+mkdir -p learnings
+```
+
+This is where graduated learning files will be written. The directory should be committed to the repo regardless of sharing mode — learnings are always meant to be project-visible.
+
 ### 12. Verify
 
 ```bash
@@ -418,6 +481,8 @@ If `scope_discovery` is `"auto"`:
 - "Say 'Reflect on this session' to generate observations from recent work."
 - "Say 'Run STM lifecycle' to compress, distill, and graduate insights."
 - "Say 'What topics have you observed?' to see current observation topics."
+- "Say 'What learnings apply here?' to check for relevant graduated insights."
+- "Say 'Share introspection with the team' to enable shared mode."
 - "Say 'Forget all observations' to purge."
 
 ---

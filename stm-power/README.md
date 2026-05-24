@@ -42,6 +42,10 @@ The introspection data lives in an `stm/` folder at your project root. It uses p
 - **Boundary-aware** — each observation declares its scope. Lessons from one domain don't bleed into another.
 - **LTM integration** — works alongside LTM Power for session linking, or standalone with its own session management.
 - **Application tracking** — graduated learnings track whether they work when applied.
+- **Tool trace** — passive capture of tool invocations for reflection grounding.
+- **Scope maturity** — signals when a scope has enough graduated learnings to warrant structural project changes.
+- **Sharing mode** — choose between local-only (gitignored) or shared (committed to repo) introspection.
+- **Learnings integration** — graduated learnings are surfaced before repeated tasks via cue-pattern matching.
 - **Self-contained** — the introspection system works even if the power is uninstalled.
 
 ## Commands

@@ -62,3 +62,35 @@ When `scope_discovery` is `"manual"`, the scope must already exist in `config.js
 - With cue field: ~180–280 tokens.
 - Topic lookup before capture: ~20 tokens output.
 - Total per-session capture cost: ~500–1,000 tokens for 3–5 observations.
+
+## Tool Trace Integration
+
+When `tool_trace_enabled` is true in config, a `postToolUse` hook records tool invocations to `stm/runtime/tool-trace.jsonl`. This is a lightweight runtime artifact (not an observation) that:
+
+- Provides grounding data for the auto-reflect hook.
+- Helps identify tool-use patterns that span multiple turns.
+- Is capped at `tool_trace_max_entries` (default 50) per session.
+- Is always gitignored (runtime artifact).
+
+The agent can reference the trace summary during reflection:
+```bash
+<python_cmd> stm/bin/stm.py trace-summary --session-only
+```
+
+## LTM Coordination
+
+When LTM is present:
+- LTM's `capture-turn` hook already records file changes and tool activity per turn.
+- STM's tool-trace supplements this with outcome tracking (success/failure) for the current session.
+- The reflect hook should prefer LTM's event log (`ltm/store/events.jsonl`) for "what happened" grounding when available.
+- STM observations should focus on the evaluative layer: "what we learned" not "what we did."
+- Avoid duplicating LTM's factual record in STM observations — reference it instead.
+
+## Sharing Mode Considerations
+
+When `sharing_mode` is `"shared"`:
+- Observations are committed to the repo and visible to all collaborators.
+- Multiple developers may record observations on the same topic — this strengthens consensus.
+- The `distill` command handles multi-user observations naturally via topic grouping.
+- Avoid recording observations that contain developer-specific context (local paths, personal preferences) unless they generalize.
+- Privacy redaction still applies — PII is stripped regardless of sharing mode.
