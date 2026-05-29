@@ -150,7 +150,23 @@ Read `python_cmd` from `ltm/config.json`.
 
 Read `ltm-script-source.md` and write its fenced code block contents to `ltm/bin/ltm.py`.
 
-**Verification:** Run `<python_cmd> ltm/bin/ltm.py selftest --quick`. If selftest passes, the script is correct regardless of hash. If the SHA-256 hash also matches the expected value in `ltm-script-source.md`, record it in the manifest. If the hash doesn't match but selftest passes, proceed — write tool artifacts (extra newlines from chunked writes) can cause hash mismatches without affecting functionality.
+**The script is ~1,030 lines. Write it in logical chunks to prevent truncation:**
+
+1. **Chunk A — Write** imports through end of helpers (up to `# ── capture-turn`). This covers: shebang, imports, constants, exit codes, and all `_helper` functions.
+2. **Gate A — Verify** the file contains `def _err(msg):` (last helper). If missing, the write was truncated — rewrite Chunk A.
+3. **Chunk B — Append** capture-turn section through end of query commands (up to `# ── maintenance commands`). This covers: `cmd_capture_turn`, session management helpers, and all `cmd_files/sessions/search/checkpoints/threads/show/decisions`.
+4. **Gate B — Verify** the file contains `def cmd_decisions(args):`. If missing, re-append Chunk B.
+5. **Chunk C — Append** maintenance commands through end of purge/teardown (up to `# ── selftest`). This covers: `cmd_health`, `cmd_validate`, `cmd_repair`, `cmd_regenerate`, `cmd_compact`, `cmd_checkpoint`, `cmd_purge_last`, `cmd_purge_all`, `cmd_teardown`.
+6. **Gate C — Verify** the file contains `def cmd_teardown(args):`. If missing, re-append Chunk C.
+7. **Chunk D — Append** selftest and CLI entry point to end of file. This covers: `cmd_selftest` (with embedded `LTMSelfTest` class) and `def main():` with the argparse CLI.
+8. **Gate D — Verify** the file ends with `if __name__ == "__main__":` followed by `main()`. If missing, re-append Chunk D.
+
+**Final verification:**
+- Run `wc -l ltm/bin/ltm.py` — expect >= 1,000 lines. If significantly fewer, the file is truncated.
+- Run `<python_cmd> ltm/bin/ltm.py selftest --quick`. If selftest passes, the script is correct regardless of hash.
+- If the SHA-256 hash matches the expected value in `ltm-script-source.md`, record it in the manifest. If hash doesn't match but selftest passes, record `"selftest-verified"` — write tool artifacts (extra newlines from chunked appends) can cause hash mismatches without affecting functionality.
+
+**CRITICAL — Recovery:** If selftest fails, the script is incomplete or corrupted. Re-read `ltm-script-source.md` from scratch and rewrite the entire file. Do NOT attempt to patch a broken script. Do NOT proceed to Phase 3 with a failing selftest.
 
 **STOP — Verify Phase 2:** Selftest must pass before continuing.
 
@@ -336,8 +352,10 @@ Ask the user to confirm "LTM Post-Turn Capture" appears in Kiro's Agent Hooks pa
 
 If bootstrap was interrupted mid-process:
 
-1. If `ltm/bin/ltm.py` exists → run `<python_cmd> ltm/bin/ltm.py validate` to see what's missing.
-2. If `ltm/bin/ltm.py` doesn't exist → check directory listing against Phase 1 expectations.
+1. If `ltm/bin/ltm.py` exists → run `<python_cmd> ltm/bin/ltm.py selftest --quick`.
+   - If selftest passes → Phase 2 is complete. Check for Phase 3 artifacts (hook, steering, gitignore, manifest) and resume from the first missing one.
+   - If selftest fails → the script is truncated or corrupted. Re-execute Phase 2 from scratch.
+2. If `ltm/bin/ltm.py` doesn't exist → check directory listing against Phase 1 expectations. If Phase 1 is complete, start Phase 2.
 3. Skip completed steps. Resume from the first incomplete phase.
 4. Do not re-run steps that already succeeded.
 

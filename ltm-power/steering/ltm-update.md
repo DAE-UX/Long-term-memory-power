@@ -28,7 +28,7 @@ The user says "Update LTM", "update memory tooling", or equivalent.
 1. **Verify LTM exists:** Check `ltm/config.json` has `"created_by": "ltm-power"`. If not, abort.
 2. **Read current config:** Load `ltm/config.json`. Preserve all user settings (`exclude_paths`, `sensitive_path_patterns`, `session_timeout_minutes`, etc.).
 3. **Read `python_cmd`:** Use the existing `python_cmd` from config. If it no longer works, re-detect.
-4. **Write new `ltm.py`:** Read `ltm-script-source.md`, write to `ltm/bin/ltm.py`. Verify SHA-256 hash.
+4. **Write new `ltm.py`:** Read `ltm-script-source.md`, write to `ltm/bin/ltm.py` using the chunked write procedure from `ltm-bootstrap.md` Phase 2. Verify with selftest.
 5. **Regenerate hook:** Write `.kiro/hooks/ltm-postturn-capture.kiro.hook` with current `python_cmd`.
 6. **Regenerate workspace steering:** Write `.kiro/steering/ltm-operations.md` and `.kiro/steering/ltm-memory-format.md` from the templates in `ltm-bootstrap.md` step 8.
 7. **Update config version:** Set `version` to the power's current version. Preserve all other fields.

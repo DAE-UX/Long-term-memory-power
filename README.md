@@ -16,13 +16,9 @@ Project-local memory that persists across sessions. Tracks file changes, saves c
 
 [Full LTM documentation →](ltm-power/README.md)
 
-### [stm-power](stm-power/) — STM Introspection
+### [stm-power](stm-power/) — Short-Term Introspection
 
-Agent self-improvement through structured observation capture. Records what works and what doesn't, builds consensus across sessions, and graduates validated insights into actionable learning files.
-
-- Say **"Remember what works."** to bootstrap.
-- Say **"Reflect on this session."** to generate observations.
-- Say **"Run STM lifecycle."** to compress, distill, and graduate.
+Within-session awareness and observation capture. Records what the agent learns during tool usage and promotes high-value observations to long-term memory.
 
 [Full STM documentation →](stm-power/README.md)
 
@@ -32,8 +28,7 @@ In Kiro, open the Powers panel → "Add power from GitHub" → enter this repo U
 
 ## How they work together
 
-- **LTM** tracks what happened — files changed, sessions, checkpoints, decisions.
-- **STM** tracks what the agent learned from what happened — the evaluative layer.
-- When both are installed, STM reads LTM's session IDs to link observations to sessions.
-- The dependency is one-way: STM → LTM. LTM never reads from STM.
+- **STM** captures micro-learnings within a session (observations, patterns, constraints).
+- **LTM** preserves durable knowledge across sessions (checkpoints, decisions, file history).
+- At session boundaries, STM observations can be promoted into LTM checkpoints.
 - Both powers use progressive disclosure to minimize context overhead.

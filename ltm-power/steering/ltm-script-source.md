@@ -4,7 +4,7 @@ This file contains the canonical `ltm.py` source code. It is loaded only when th
 
 **Expected SHA-256:** `0e5733a73e61887657bf396aeafb9b0cc3b6c5218583eec89cb7fecf58597092`
 
-Write the contents of the fenced code block below exactly to `ltm/bin/ltm.py`. After writing, verify the SHA-256 hash matches the expected value above. If it does not match, report a generation error.
+Write the contents of the fenced code block below exactly to `ltm/bin/ltm.py`. After writing, verify using the chunked write procedure and gates in `ltm-bootstrap.md` Phase 2. If the SHA-256 hash matches the expected value above, record it in the manifest. If the hash doesn't match but `selftest --quick` passes, the script is functionally correct — write tool artifacts (extra newlines from chunked appends) can cause benign hash mismatches.
 
 ```python
 #!/usr/bin/env python3
