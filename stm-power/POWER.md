@@ -74,6 +74,7 @@ If no `stm/`, read `stm-bootstrap.md` and execute.
 | "What topics have you observed?" | Run `stm.py topics` |
 | "What have you learned?" | Run `stm.py recall` for summary |
 | "What learnings apply here?" | Run `stm.py learnings --cue "<situation>"` |
+| "Search observations." | Run `stm.py search "<term>" [--scope <scope>] [--days N]` |
 | "Run STM lifecycle." | Trigger stm-lifecycle hook (compress → distill → graduate) |
 | "Show STM status." | Run `stm.py status` |
 | "Share introspection with the team." | Run `stm.py sharing --mode shared` |

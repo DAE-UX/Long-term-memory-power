@@ -2,9 +2,13 @@
 
 This file contains the canonical `stm.py` source code. It is loaded only when the agent needs to write the script to a project — during bootstrap or repair.
 
-**Expected SHA-256:** `729079db337a1526211c977c0589d00759202a2006c5d22492e38ebc775aa620`
+**Expected SHA-256:** `cc715c07e9b3bc9a1ba6f8e4faad4a5ce6fe4295f1adf4d4be2bd08a6bfefbbe`
+
+**Line count:** 1178
 
 Write the contents of the fenced code block below exactly to `stm/bin/stm.py`. After writing, verify the SHA-256 hash matches the expected value above. If it does not match, report a generation error.
+
+**CRITICAL:** This file is large (~1178 lines). If your tool has write-size limits, use chunked writes (append mode) and verify line count after each chunk. Run `selftest --quick` immediately after writing to confirm the script is complete and functional. Do NOT proceed to hook installation until selftest passes.
 
 ```python
 #!/usr/bin/env python3
@@ -17,7 +21,7 @@ runtime artifacts under stm/runtime/.
 import argparse, datetime, hashlib, json, os, re, sys, tempfile, unittest
 from pathlib import Path
 
-VERSION = "1.0.13"
+VERSION = "1.1.1"
 ROOT = Path("stm")
 STORE = ROOT / "store"
 RUNTIME = ROOT / "runtime"
@@ -30,8 +34,11 @@ STATUS_PATH = RUNTIME / "status.json"
 CUR_SESSION = RUNTIME / "current-session.json"
 MERGE_CANDIDATES = RUNTIME / "merge-candidates.json"
 ERRORS_PATH = RUNTIME / "errors.jsonl"
+TOOL_TRACE = RUNTIME / "tool-trace.jsonl"
 LTM_SESSION = Path("ltm/runtime/current-session.json")
 LTM_CONFIG = Path("ltm/config.json")
+LTM_EVENTS = Path("ltm/store/events.jsonl")
+LEARNINGS_DIR = Path("learnings")
 
 VALID_STANCES = {"supports", "contradicts", "supersedes", "neutral"}
 VALID_CONFIDENCE = {"low", "medium", "high"}
@@ -235,6 +242,70 @@ def _inline_compact():
         _err(f"inline compaction: removed {removed} compressed observations from store")
 
 
+# ── tool-trace ───────────────────────────────────────────────────────────────
+
+def cmd_trace(args):
+    """Record a tool invocation to the tool-trace runtime artifact."""
+    config = _load_config()
+    if not config.get("tool_trace_enabled", True):
+        return
+
+    max_entries = config.get("tool_trace_max_entries", 50)
+    entry = {
+        "ts": _now(),
+        "tool": args.tool or "unknown",
+        "outcome": args.outcome or "success",
+        "session_id": _resolve_session(config),
+    }
+    if args.detail:
+        # Truncate detail to avoid bloat
+        entry["detail"] = args.detail[:200]
+
+    # Privacy redaction on detail
+    if entry.get("detail"):
+        for pat in _PRIVACY_PATTERNS:
+            entry["detail"] = pat.sub("[REDACTED]", entry["detail"])
+
+    _append_jsonl(TOOL_TRACE, entry)
+
+    # Cap trace size: keep only last N entries
+    traces = _read_jsonl(TOOL_TRACE)
+    if len(traces) > max_entries:
+        _write_jsonl(TOOL_TRACE, traces[-max_entries:])
+
+    _out({"status": "traced", "tool": entry["tool"]})
+
+
+def cmd_trace_summary(args):
+    """Summarize recent tool-trace entries for reflection grounding."""
+    config = _load_config()
+    traces = _read_jsonl(TOOL_TRACE)
+    session_id = _resolve_session(config)
+
+    # Filter to current session if requested
+    if args.session_only:
+        traces = [t for t in traces if t.get("session_id") == session_id]
+
+    limit = min(args.limit or 20, 50)
+    traces = traces[-limit:]
+
+    # Aggregate by tool
+    tool_counts = {}
+    failures = []
+    for t in traces:
+        tool = t.get("tool", "unknown")
+        tool_counts[tool] = tool_counts.get(tool, 0) + 1
+        if t.get("outcome") == "failure":
+            failures.append({"tool": tool, "ts": t.get("ts"), "detail": t.get("detail", "")[:100]})
+
+    _out({
+        "session_id": session_id,
+        "total_traces": len(traces),
+        "tool_frequency": dict(sorted(tool_counts.items(), key=lambda x: -x[1])),
+        "failures": failures[-5:],  # Last 5 failures only
+    })
+
+
 # ── record ───────────────────────────────────────────────────────────────────
 
 def cmd_record(args):
@@ -424,6 +495,7 @@ def cmd_recall(args):
     limit = min(args.limit or 3, 5)
     clusters = _read_jsonl(CLUSTERS)
     obs = _read_jsonl(OBSERVATIONS)
+    config = _load_config()
     results = []
     graduated = [c for c in clusters if c.get("status") == "graduated"]
     if args.scope:
@@ -432,7 +504,9 @@ def cmd_recall(args):
         cue_words = set(args.cue.lower().split())
         for c in graduated:
             pattern_words = set((c.get("cue_pattern") or "").lower().split())
-            c["_score"] = len(cue_words & pattern_words)
+            # Also match against topic words for broader recall
+            topic_words = set((c.get("topic") or "").replace("-", " ").lower().split())
+            c["_score"] = len(cue_words & pattern_words) * 2 + len(cue_words & topic_words)
         graduated.sort(key=lambda x: -x.get("_score", 0))
     for c in graduated[:limit]:
         exemplar_summary = None
@@ -446,18 +520,30 @@ def cmd_recall(args):
             "cue_pattern": c.get("cue_pattern"),
             "application_success_rate": c.get("application_success_rate"),
             "exemplar_summary": exemplar_summary,
+            "graduated_to": c.get("graduated_to"),
         })
     if len(results) < limit:
-        high_conf = [o for o in obs if not o.get("compressed") and o.get("confidence") == "high"
-                     and not o.get("invalidated")]
+        # Fallback to individual observations — include medium+ when cue filtering is active
+        min_conf = "high" if not args.cue else "medium"
+        conf_order = {"low": 0, "medium": 1, "high": 2}
+        min_conf_val = conf_order[min_conf]
+        fallback = [o for o in obs if not o.get("compressed")
+                    and conf_order.get(o.get("confidence", "low"), 0) >= min_conf_val
+                    and not o.get("invalidated")]
         if args.scope:
-            high_conf = [o for o in high_conf if o.get("scope") == args.scope]
+            fallback = [o for o in fallback if o.get("scope") == args.scope]
         if args.cue:
             cue_words = set(args.cue.lower().split())
-            for o in high_conf:
-                o["_score"] = len(cue_words & set((o.get("cue") or "").lower().split()))
-            high_conf.sort(key=lambda x: -x.get("_score", 0))
-        for o in high_conf[:limit - len(results)]:
+            for o in fallback:
+                cue_score = len(cue_words & set((o.get("cue") or "").lower().split()))
+                topic_score = len(cue_words & set((o.get("topic") or "").replace("-", " ").lower().split()))
+                o["_score"] = cue_score * 2 + topic_score
+            fallback = [o for o in fallback if o.get("_score", 0) > 0]
+            fallback.sort(key=lambda x: -x.get("_score", 0))
+        else:
+            # No cue — just return most recent high-confidence
+            fallback.sort(key=lambda x: x.get("ts", ""), reverse=True)
+        for o in fallback[:limit - len(results)]:
             results.append({"observation_id": o.get("id"), "claim": o.get("claim"),
                             "cue": o.get("cue"), "confidence": o.get("confidence"),
                             "stance": o.get("stance")})
@@ -474,6 +560,19 @@ def cmd_status(args):
         sz = OBSERVATIONS.stat().st_size if OBSERVATIONS.exists() else 0
     except OSError:
         sz = 0
+
+    # Scope maturity analysis
+    maturity_threshold = config.get("scope_maturity_threshold", 5)
+    scope_graduated = {}
+    for c in graduated:
+        scope = c.get("scope", "unknown")
+        scope_graduated[scope] = scope_graduated.get(scope, 0) + 1
+    mature_scopes = [{"scope": s, "graduated_count": n}
+                     for s, n in scope_graduated.items() if n >= maturity_threshold]
+
+    # Sharing mode
+    sharing_mode = config.get("sharing_mode", "local")
+
     status = {
         "observation_count": len(obs), "active_observations": len(active),
         "compressed_observations": sum(1 for o in obs if o.get("compressed")),
@@ -483,6 +582,9 @@ def cmd_status(args):
         "compression_needed": sz > config.get("compaction_warn_bytes", 1048576),
         "ltm_available": config.get("ltm_available", False),
         "scope_count": len(config.get("scopes", [])),
+        "mature_scopes": mature_scopes,
+        "sharing_mode": sharing_mode,
+        "tool_trace_entries": len(_read_jsonl(TOOL_TRACE)) if TOOL_TRACE.exists() else 0,
     }
     _update_status(**status)
     _out(status)
@@ -665,6 +767,105 @@ def cmd_mark_integrated(args):
             return
     _err(f"cluster {args.cluster} not found"); sys.exit(EXIT_INVALID)
 
+
+# ── learnings integration ────────────────────────────────────────────────────
+
+def cmd_learnings(args):
+    """List graduated learnings with cue patterns for pre-task recall."""
+    config = _load_config()
+    learnings_dir = Path(config.get("graduation_output_path", "learnings"))
+    clusters = _read_jsonl(CLUSTERS)
+    graduated = [c for c in clusters if c.get("status") == "graduated"]
+
+    results = []
+    for c in graduated:
+        entry = {
+            "cluster_id": c.get("cluster_id"),
+            "scope": c.get("scope"),
+            "topic": c.get("topic"),
+            "consensus_claim": c.get("consensus_claim"),
+            "cue_pattern": c.get("cue_pattern"),
+            "graduated_to": c.get("graduated_to"),
+            "application_count": c.get("application_count", 0),
+            "application_success_rate": c.get("application_success_rate"),
+        }
+        # Check if the learning file still exists
+        if c.get("graduated_to"):
+            entry["file_exists"] = Path(c["graduated_to"]).exists()
+        results.append(entry)
+
+    # Filter by scope or cue if provided
+    if args.scope:
+        results = [r for r in results if r.get("scope") == args.scope]
+    if args.cue:
+        cue_words = set(args.cue.lower().split())
+        for r in results:
+            pattern_words = set((r.get("cue_pattern") or "").lower().split())
+            r["_relevance"] = len(cue_words & pattern_words)
+        results = [r for r in results if r.get("_relevance", 0) > 0]
+        results.sort(key=lambda x: -x.get("_relevance", 0))
+        for r in results:
+            r.pop("_relevance", None)
+
+    _out(results[:args.limit] if args.limit else results)
+
+
+# ── sharing mode ─────────────────────────────────────────────────────────────
+
+def cmd_sharing(args):
+    """Manage sharing mode: local (gitignored) or shared (committed to repo)."""
+    config = _load_config()
+    current_mode = config.get("sharing_mode", "local")
+
+    if args.mode is None:
+        _out({"sharing_mode": current_mode})
+        return
+
+    if args.mode not in ("local", "shared"):
+        _err("--mode must be 'local' or 'shared'")
+        sys.exit(EXIT_INVALID)
+
+    if args.mode == current_mode:
+        _out({"sharing_mode": current_mode, "changed": False})
+        return
+
+    config["sharing_mode"] = args.mode
+    _save_config(config)
+
+    # Update .gitignore accordingly
+    gi = Path(".gitignore")
+    start_delim = "# --- stm-power ---"
+    end_delim = "# --- /stm-power ---"
+
+    if args.mode == "shared":
+        # Shared mode: only ignore runtime, not store
+        new_block = f"""{start_delim}
+stm/runtime/*
+# --- /stm-power ---"""
+    else:
+        # Local mode: ignore both store and runtime
+        new_block = f"""{start_delim}
+stm/store/*.jsonl
+stm/runtime/*
+{end_delim}"""
+
+    if gi.exists():
+        content = gi.read_text()
+        if start_delim in content and end_delim in content:
+            before = content[:content.index(start_delim)]
+            after = content[content.index(end_delim) + len(end_delim):]
+            gi.write_text(before + new_block + after)
+        else:
+            # Append if delimiters not found
+            gi.write_text(content.rstrip() + "\n\n" + new_block + "\n")
+    else:
+        gi.write_text(new_block + "\n")
+
+    note = ("shared mode commits observations to repo — all collaborators see introspection data"
+            if args.mode == "shared"
+            else "local mode keeps observations private — only you see introspection data")
+    _out({"sharing_mode": args.mode, "changed": True, "note": note})
+
 # ── health / validate / repair ───────────────────────────────────────────────
 
 def cmd_health(args):
@@ -787,13 +988,15 @@ def cmd_repair(args):
         _atomic_write_text(MERGE_CANDIDATES, "[]"); repaired.append(f"created: {MERGE_CANDIDATES}")
     if not ERRORS_PATH.exists():
         ERRORS_PATH.write_text(""); repaired.append(f"created: {ERRORS_PATH}")
+    if not TOOL_TRACE.exists():
+        TOOL_TRACE.write_text(""); repaired.append(f"created: {TOOL_TRACE}")
     _out({"repaired": repaired})
 
 
 # ── purge / teardown ─────────────────────────────────────────────────────────
 
 def cmd_purge_all(args):
-    plan = {"clears": ["observations.jsonl", "clusters.jsonl", "runtime/*"]}
+    plan = {"clears": ["observations.jsonl", "clusters.jsonl", "runtime/*", "tool-trace.jsonl"]}
     if not args.confirm:
         _out({"dry_run": True, "plan": plan}); return
     for p in [OBSERVATIONS, CLUSTERS]: p.write_text("")
@@ -803,6 +1006,7 @@ def cmd_purge_all(args):
     _atomic_write_text(STATUS_PATH, json.dumps({"generated_at": _now(), "observation_count": 0}, indent=2))
     _atomic_write_text(MERGE_CANDIDATES, "[]")
     ERRORS_PATH.write_text("")
+    TOOL_TRACE.write_text("")
     _out({"purged": plan})
 
 def cmd_teardown(args):
@@ -949,6 +1153,21 @@ def main():
     mgp.add_argument("--cluster", required=True); mgp.add_argument("--path", required=True)
     mip = sub.add_parser("mark-integrated")
     mip.add_argument("--cluster", required=True); mip.add_argument("--files", nargs="+", required=True)
+    # Tool trace commands
+    tp = sub.add_parser("trace")
+    tp.add_argument("--tool", required=True); tp.add_argument("--outcome", default="success")
+    tp.add_argument("--detail", default=None)
+    tsp = sub.add_parser("trace-summary")
+    tsp.add_argument("--session-only", dest="session_only", action="store_true")
+    tsp.add_argument("--limit", type=int, default=20)
+    # Learnings command
+    lp = sub.add_parser("learnings")
+    lp.add_argument("--scope", default=None); lp.add_argument("--cue", default=None)
+    lp.add_argument("--limit", type=int, default=10)
+    # Sharing command
+    sp = sub.add_parser("sharing")
+    sp.add_argument("--mode", default=None, choices=["local", "shared"])
+    # Existing commands
     sub.add_parser("health"); sub.add_parser("validate"); sub.add_parser("repair")
     pap = sub.add_parser("purge-all"); pap.add_argument("--confirm", action="store_true")
     tdp = sub.add_parser("teardown"); tdp.add_argument("--confirm", action="store_true")
@@ -959,7 +1178,10 @@ def main():
             "status": cmd_status, "search": cmd_search, "compress": cmd_compress,
             "distill": cmd_distill,
             "pending-clusters": cmd_pending_clusters, "mark-graduated": cmd_mark_graduated,
-            "mark-integrated": cmd_mark_integrated, "health": cmd_health,
+            "mark-integrated": cmd_mark_integrated,
+            "trace": cmd_trace, "trace-summary": cmd_trace_summary,
+            "learnings": cmd_learnings, "sharing": cmd_sharing,
+            "health": cmd_health,
             "validate": cmd_validate, "repair": cmd_repair, "purge-all": cmd_purge_all,
             "teardown": cmd_teardown, "selftest": cmd_selftest}
     try: cmds[args.command](args)
@@ -967,5 +1189,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 ```

@@ -27,7 +27,7 @@ stm/bin/
 ```json
 {
   "created_by": "stm-power",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "created_at": "<ISO-8601-now>",
   "python_cmd": "<python_cmd>",
   "schema_version": 2,
@@ -49,7 +49,11 @@ stm/bin/
   "sharing_mode": "local",
   "tool_trace_enabled": true,
   "tool_trace_max_entries": 50,
-  "scope_maturity_threshold": 5
+  "scope_maturity_threshold": 5,
+  "capture_enabled": true,
+  "max_observations_per_session": 50,
+  "min_capture_confidence": "low",
+  "privacy_patterns": []
 }
 ```
 
@@ -122,6 +126,11 @@ Read `python_cmd` from `stm/config.json`.
 - `<python_cmd> stm/bin/stm.py pending-clusters`
 - `<python_cmd> stm/bin/stm.py mark-graduated --cluster <id> --path <path>`
 - `<python_cmd> stm/bin/stm.py mark-integrated --cluster <id> --files <file1> <file2>`
+- `<python_cmd> stm/bin/stm.py trace --tool <name> --outcome <success|failure> [--detail <text>]`
+- `<python_cmd> stm/bin/stm.py trace-summary [--session-only] [--limit N]`
+- `<python_cmd> stm/bin/stm.py learnings [--scope <scope>] [--cue <text>] [--limit N]`
+- `<python_cmd> stm/bin/stm.py sharing [--mode local|shared]`
+- `<python_cmd> stm/bin/stm.py search <term> [--scope <scope>] [--days N] [--limit N]`
 - `<python_cmd> stm/bin/stm.py health`
 - `<python_cmd> stm/bin/stm.py validate`
 - `<python_cmd> stm/bin/stm.py repair`
@@ -132,7 +141,24 @@ Read `python_cmd` from `stm/config.json`.
 
 ### 6. Generate `stm/bin/stm.py`
 
-Read `stm-script-source.md` and write its fenced code block contents to `stm/bin/stm.py`. Verify the SHA-256 hash matches the expected value in that file.
+Read `stm-script-source.md` and write its fenced code block contents to `stm/bin/stm.py`.
+
+**Chunked write procedure** (the script is ~1178 lines — too large for a single write in some environments):
+
+1. Write lines 1–400 (imports, helpers, tool-trace, record command) to `stm/bin/stm.py`
+2. Verify file exists and line count >= 400
+3. Append lines 401–800 (topics, recall, status, search, compress, distill)
+4. Verify line count >= 800
+5. Append lines 801–end (cluster management, learnings, sharing, health, validate, repair, purge, teardown, selftest, CLI entry point)
+6. Verify line count >= 1170
+
+**CRITICAL — Mandatory verification gate:**
+```bash
+<python_cmd> stm/bin/stm.py selftest --quick
+```
+**STOP.** Do NOT proceed to step 7 (hook installation) until selftest passes. If selftest fails, the script is incomplete or corrupted. Re-read `stm-script-source.md` and rewrite the file. A broken script will cause all subsequent hooks to fail silently.
+
+Verify the SHA-256 hash matches the expected value in `stm-script-source.md`. If it does not match but selftest passes, proceed with a warning — hash mismatches can occur from line-ending normalization.
 
 ### 7. Install hooks
 
@@ -204,6 +230,20 @@ Write to `.kiro/hooks/`:
   "then": {
     "type": "askAgent",
     "prompt": "Execute the STM lifecycle. Steps: (1) Check compression via `<python_cmd> stm/bin/stm.py status` — if compression_needed, run the compress procedure. (2) Run `<python_cmd> stm/bin/stm.py distill` and review merge candidates. (3) Check for pending clusters via `<python_cmd> stm/bin/stm.py pending-clusters` — if any, run the graduate procedure. (4) Report results."
+  }
+}
+```
+
+**`stm-auto-reflect.kiro.hook`:**
+```json
+{
+  "name": "STM Auto-Reflect",
+  "version": "1.1.0",
+  "description": "Lightweight end-of-turn observation capture. Records one observation if something notable happened, skips otherwise.",
+  "when": { "type": "agentStop" },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Did anything go notably well or poorly this turn — a decision that saved time, an approach that caused rework, a pattern you noticed, or user feedback? If you need grounding, run `<python_cmd> stm/bin/stm.py trace-summary --session-only --limit 10` to review recent tool activity. Also check `<python_cmd> stm/bin/stm.py learnings --cue \"<what you just did>\" --limit 2` to see if a graduated learning applied. If yes, record exactly one observation via `<python_cmd> stm/bin/stm.py record --scope <scope> --topic <topic> --stance <stance> --claim \"<one sentence>\" --evidence \"<what happened>\" --confidence <level> --source agent:reflect`. Include --cue if you can identify the situational trigger. If you applied a graduated learning, use --source agent:followup --applies-to <cluster_id> --outcome <confirmed|mixed|failed> instead. If nothing notable happened (routine operation, simple read, trivial change), respond with just: none."
   }
 }
 ```
@@ -388,7 +428,7 @@ stm/runtime/*
 ```json
 {
   "created_by": "stm-power",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "created_at": "<ISO-8601-now>",
   "stm_py_hash": "<SHA-256 of stm/bin/stm.py>",
   "files": [
@@ -405,6 +445,7 @@ stm/runtime/*
     ".kiro/hooks/stm-distill.kiro.hook",
     ".kiro/hooks/stm-graduate.kiro.hook",
     ".kiro/hooks/stm-lifecycle.kiro.hook",
+    ".kiro/hooks/stm-auto-reflect.kiro.hook",
     ".kiro/hooks/stm-tool-trace.kiro.hook"
   ],
   "steering": [
