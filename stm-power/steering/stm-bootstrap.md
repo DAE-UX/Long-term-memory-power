@@ -540,6 +540,20 @@ This is where graduated learning files will be written. The directory should be 
 2. Report: "Found existing STM with missing or corrupted files. Repairing without losing data."
 3. Run repair, then health check. Report results.
 
+## Case D — Interrupted bootstrap (partial install)
+
+If the agent detects a partial STM installation (e.g., `stm/` exists but is missing hooks or steering), resume from the first incomplete step:
+
+1. **Check script:** If `stm/bin/stm.py` exists, run `<python_cmd> stm/bin/stm.py selftest --quick`.
+   - If passes → script is good, skip steps 1–6.
+   - If fails → rewrite script (step 6).
+   - If missing → start from step 1.
+2. **Check hooks:** Look for `.kiro/hooks/stm-*.kiro.hook`. If all expected hooks exist, skip step 7 and 11c.
+3. **Check steering:** Look for `.kiro/steering/stm-observations.md` and `.kiro/steering/stm-memory-format.md`. If present, skip step 8.
+4. **Check .gitignore:** Look for `# --- stm-power ---` delimiter. If present, skip step 9.
+5. **Check manifest:** If `stm/manifest.json` exists with correct `created_by`, skip step 10.
+6. **Resume** from the first missing artifact. Run verification (step 12) at the end regardless.
+
 ---
 
 ## Degraded bootstrap (no Python)

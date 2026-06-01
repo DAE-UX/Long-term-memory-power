@@ -25,7 +25,7 @@ The user says "Update STM", "update introspection tooling", or equivalent.
 1. **Verify STM exists:** Check `stm/config.json` has `"created_by": "stm-power"`. If not, abort.
 2. **Read current config:** Load `stm/config.json`. Preserve all user settings (`scopes`, `consensus_threshold`, `graduation_output_path`, etc.).
 3. **Read `python_cmd`:** Use the existing `python_cmd` from config. If it no longer works, re-detect. If LTM is present, check for `python_cmd` divergence and offer to sync.
-4. **Write new `stm.py`:** Read `stm-script-source.md`, write to `stm/bin/stm.py`. Verify SHA-256 hash.
+4. **Write new `stm.py`:** Read `stm-script-source.md`, write to `stm/bin/stm.py` using the chunked write procedure from bootstrap step 6 (write in 3 chunks with line-count verification between each). Run `selftest --quick` after writing. If the SHA-256 hash matches, update the manifest. If the hash doesn't match but selftest passes, the script is functionally correct — proceed with a warning (write tool artifacts can cause benign hash mismatches). If selftest fails, re-read `stm-script-source.md` and rewrite the entire file.
 5. **Regenerate hooks:** Write all `.kiro/hooks/stm-*.kiro.hook` files with current `python_cmd`.
 6. **Regenerate workspace steering:** Write `.kiro/steering/stm-observations.md` and `.kiro/steering/stm-memory-format.md` from the templates in `stm-bootstrap.md` step 8.
 7. **Update config version:** Set `version` to the power's current version. Preserve all other fields.
