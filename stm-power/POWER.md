@@ -152,4 +152,4 @@ When LTM is installed alongside STM:
 
 **Author:** AWS
 
-**Issues & feedback:** [github.com/DAE-UX/STM-Introspection-power](https://github.com/DAE-UX/STM-Introspection-power/issues)
+**Issues & feedback:** [github.com/DAE-UX/Long-term-memory-power](https://github.com/DAE-UX/Long-term-memory-power/issues)

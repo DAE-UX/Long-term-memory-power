@@ -2,7 +2,7 @@
 
 This file contains the canonical `stm.py` source code. It is loaded only when the agent needs to write the script to a project — during bootstrap or repair.
 
-**Expected SHA-256:** `d77cf51319fefcd194def2897f0fff56cdc9279d7f5ff49b76d550db2e9cc0bc`
+**Expected SHA-256:** `93e21e84694a2ca6078a3ebc50e396ffaedf0df5f061619573a6265bbedb8177`
 
 **Line count:** 1178
 
@@ -21,7 +21,7 @@ runtime artifacts under stm/runtime/.
 import argparse, datetime, hashlib, json, os, re, sys, tempfile, unittest
 from pathlib import Path
 
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 ROOT = Path("stm")
 STORE = ROOT / "store"
 RUNTIME = ROOT / "runtime"
