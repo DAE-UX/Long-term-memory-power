@@ -34,7 +34,7 @@ Removes all STM artifacts from the project as if the power was never used.
 
 **Process:**
 1. Read `stm/manifest.json`.
-2. Validate manifest: `created_by` must be `stm-power`. All paths must be under `stm/`, `.kiro/hooks/stm-*`, or `.kiro/steering/stm-*`. Reject absolute paths or `..` traversal.
+2. Validate manifest: `created_by` must be `stm-power`. All paths must be under `stm/`, `.kiro/hooks/stm-*` (`.json` or `.kiro.hook`), or `.kiro/steering/stm-*`. Reject absolute paths or `..` traversal.
 3. Remove all listed files and directories.
 4. Remove the `# --- stm-power ---` block from `.gitignore`. If delimiters not found, list lines for manual removal.
 5. Remove listed hook files from `.kiro/hooks/`.

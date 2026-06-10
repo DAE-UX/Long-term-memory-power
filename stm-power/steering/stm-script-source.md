@@ -2,13 +2,13 @@
 
 This file contains the canonical `stm.py` source code. It is loaded only when the agent needs to write the script to a project — during bootstrap or repair.
 
-**Expected SHA-256:** `93e21e84694a2ca6078a3ebc50e396ffaedf0df5f061619573a6265bbedb8177`
+**Expected SHA-256:** `56e51b09b9963de6a8df0f116adb78045c36ee5f9bb85dd816f1a1977265c756`
 
-**Line count:** 1178
+**Line count:** 1179
 
 Write the contents of the fenced code block below exactly to `stm/bin/stm.py`. After writing, verify the SHA-256 hash matches the expected value above. If it does not match, report a generation error.
 
-**CRITICAL:** This file is large (~1178 lines). If your tool has write-size limits, use chunked writes (append mode) and verify line count after each chunk. Run `selftest --quick` immediately after writing to confirm the script is complete and functional. Do NOT proceed to hook installation until selftest passes.
+**CRITICAL:** This file is large (~1179 lines). If your tool has write-size limits, use chunked writes (append mode) and verify line count after each chunk. Run `selftest --quick` immediately after writing to confirm the script is complete and functional. Do NOT proceed to hook installation until selftest passes.
 
 ```python
 #!/usr/bin/env python3
@@ -21,7 +21,7 @@ runtime artifacts under stm/runtime/.
 import argparse, datetime, hashlib, json, os, re, sys, tempfile, unittest
 from pathlib import Path
 
-VERSION = "1.1.5"
+VERSION = "1.1.7"
 ROOT = Path("stm")
 STORE = ROOT / "store"
 RUNTIME = ROOT / "runtime"
@@ -1017,6 +1017,7 @@ def cmd_teardown(args):
             _out({"dry_run": True, "plan": plan}); return
         import shutil
         if ROOT.exists(): shutil.rmtree(ROOT)
+        for p in Path(".kiro/hooks").glob("stm-*.json"): p.unlink()
         for p in Path(".kiro/hooks").glob("stm-*.kiro.hook"): p.unlink()
         for p in Path(".kiro/steering").glob("stm-*.md"): p.unlink()
         _out({"torn_down": plan}); return

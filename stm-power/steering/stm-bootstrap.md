@@ -6,7 +6,7 @@
 
 1. **Detect Python:** Try `python3 --version`, then `python --version`. Require >= 3.9. Store the working command as `python_cmd`. If unavailable, follow Degraded Bootstrap below.
 2. **Check platform:** If Windows (`os.name == "nt"`), warn: "Windows is not a tested v1 target."
-3. **Check conflicts:** Look for existing `.kiro/hooks/stm-*.kiro.hook` or `.kiro/steering/stm-*.md`. If found, report and ask before proceeding.
+3. **Check conflicts:** Look for existing `.kiro/hooks/stm-*.json` or `.kiro/hooks/stm-*.kiro.hook` (legacy) or `.kiro/steering/stm-*.md`. If found, report and ask before proceeding. If only legacy `.kiro.hook` files exist, offer to migrate them to v2 `.json` format.
 4. **Check existing `stm/`:** If it exists with `config.json` containing `"created_by": "stm-power"`, follow Case B or C below. If it exists without the marker, report conflict and ask.
 5. **Check for LTM:** If `ltm/config.json` exists with `"created_by": "ltm-power"`, note LTM is available. STM will read `ltm/runtime/current-session.json` for session linking. If LTM is absent, STM manages its own session IDs. If LTM is present, reuse its `python_cmd` to prevent divergence.
 
@@ -162,7 +162,121 @@ Verify the SHA-256 hash matches the expected value in `stm-script-source.md`. If
 
 ### 7. Install hooks
 
-Write to `.kiro/hooks/`:
+**Determine hook format:** Check the Kiro version. If `0.12.315-insider` or later → use v2 format (`.json`). If `0.12.138-stable` or earlier → use v1 format (`.kiro.hook`). If version is unknown, default to v2.
+
+Also check for legacy v1 hooks: if `.kiro/hooks/stm-*.kiro.hook` files exist alongside `.json` files, Kiro auto-migrated them — the `.kiro.hook` duplicates can be deleted.
+
+Write to `.kiro/hooks/` using the appropriate format:
+
+#### v2 format (Kiro 0.12.315+) — `.json` files
+
+**`stm-reflect.json`:**
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "STM Reflect — End-of-Session Review",
+    "description": "Agent reviews the current session, generates observations, and checks for behavioral patterns.",
+    "trigger": "Manual",
+    "action": {
+      "type": "agent",
+      "prompt": "Review the current session's work. First run `<python_cmd> stm/bin/stm.py topics` to see existing topic keys and `<python_cmd> stm/bin/stm.py recall --scope agent-behavior --limit 3` to check for relevant prior learnings. Then: (1) Identify 1-3 things that went well or poorly. If LTM is available, read `ltm/store/events.jsonl` (last 20 entries for this session) to ground observations in what actually happened. If LTM is absent, review recent git activity (`git log --oneline -5`, `git diff --stat`) and recent STM observations instead. For each insight, record via `<python_cmd> stm/bin/stm.py record` with --source agent:reflect. Include --cue when you can identify the situational trigger. (2) If you applied any graduated learnings this session, record follow-up observations with --source agent:followup --applies-to <cluster_id> --outcome <confirmed|mixed|failed>. (3) Briefly scan your observation patterns: run `<python_cmd> stm/bin/stm.py topics` and note if any scopes have zero observations — are you blind to issues there, or is that area genuinely stable? If you notice a gap, record a neutral observation noting it. Keep the whole reflection to 1-3 observations total."
+    },
+    "enabled": true
+  }]
+}
+```
+
+**`stm-compress.json`:**
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "STM Compress — Summarize Observation Groups",
+    "description": "Compresses raw observations into summaries, preserving 1-2 exemplar cases per group.",
+    "trigger": "Manual",
+    "action": {
+      "type": "agent",
+      "prompt": "Run `<python_cmd> stm/bin/stm.py compress --identify` to find compression candidates. For each candidate group: read all raw observations, select 1-2 as exemplars (prefer observations with cue fields, user:feedback source, or highest confidence), synthesize a single summary observation that combines the claims and evidence, then record it via `<python_cmd> stm/bin/stm.py record --source agent:compress --compressed-from <id1,id2,...>`. After recording all summaries, run `<python_cmd> stm/bin/stm.py compress --execute --ids <original_ids> --exemplars <exemplar_ids>` to mark originals as compressed and exemplars as preserved. Report what was compressed and estimated token savings."
+    },
+    "enabled": true
+  }]
+}
+```
+
+**`stm-distill.json`:**
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "STM Distill — Group, Score, and Merge",
+    "description": "Runs grouping/scoring on STM observations, then prompts agent to review merge candidates.",
+    "trigger": "Manual",
+    "action": {
+      "type": "agent",
+      "prompt": "Run `<python_cmd> stm/bin/stm.py distill` to group and score observations. If the output reports merge candidates, read `stm/runtime/merge-candidates.json` and for each candidate pair decide: merge (reassign to the same topic key and re-run distill) or keep separate. Report the distill summary."
+    },
+    "enabled": true
+  }]
+}
+```
+
+**`stm-graduate.json`:**
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "STM Graduate — Synthesize Learning Proposals",
+    "description": "Agent reads pending clusters, synthesizes cue patterns and learning proposals with exemplar cases.",
+    "trigger": "Manual",
+    "action": {
+      "type": "agent",
+      "prompt": "Run `<python_cmd> stm/bin/stm.py pending-clusters` to get clusters ready for graduation. For each pending cluster: (1) verify it contains summary observations — skip if raw-only, (2) read all linked observations, (3) synthesize a cue_pattern from the observations' cue fields — this is the 'when you see X' trigger, (4) read the current state of affected project files, (5) synthesize a consensus claim and actionable recommendation, (6) include the exemplar case(s) in the learning file for narrative richness, (7) include application history if any follow-up observations exist, (8) generate a learning file following the Graduated Learning Template in the STM steering. After writing each file, run `<python_cmd> stm/bin/stm.py mark-graduated --cluster <id> --path <path>`. Also check for clusters flagged for reversal and generate reversal files. Report what was graduated, skipped, and what needs user review."
+    },
+    "enabled": true
+  }]
+}
+```
+
+**`stm-lifecycle.json`:**
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "STM Lifecycle — Compress, Distill, Graduate",
+    "description": "Runs the full STM lifecycle: compression, distillation, and graduation in sequence.",
+    "trigger": "Manual",
+    "action": {
+      "type": "agent",
+      "prompt": "Execute the STM lifecycle. Steps: (1) Check compression via `<python_cmd> stm/bin/stm.py status` — if compression_needed, run the compress procedure. (2) Run `<python_cmd> stm/bin/stm.py distill` and review merge candidates. (3) Check for pending clusters via `<python_cmd> stm/bin/stm.py pending-clusters` — if any, run the graduate procedure. (4) Report results."
+    },
+    "enabled": true
+  }]
+}
+```
+
+**`stm-auto-reflect.json`:**
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "STM Auto-Reflect",
+    "description": "Lightweight end-of-turn observation capture. Records one observation if something notable happened, skips otherwise.",
+    "trigger": "Stop",
+    "action": {
+      "type": "agent",
+      "prompt": "Did anything go notably well or poorly this turn — a decision that saved time, an approach that caused rework, a pattern you noticed, or user feedback? If you need grounding, run `<python_cmd> stm/bin/stm.py trace-summary --session-only --limit 10` to review recent tool activity. Also check `<python_cmd> stm/bin/stm.py learnings --cue \"<what you just did>\" --limit 2` to see if a graduated learning applied. If yes, record exactly one observation via `<python_cmd> stm/bin/stm.py record --scope <scope> --topic <topic> --stance <stance> --claim \"<one sentence>\" --evidence \"<what happened>\" --confidence <level> --source agent:reflect`. Include --cue if you can identify the situational trigger. If you applied a graduated learning, use --source agent:followup --applies-to <cluster_id> --outcome <confirmed|mixed|failed> instead. If nothing notable happened (routine operation, simple read, trivial change), respond with just: none."
+    },
+    "enabled": true
+  }]
+}
+```
+
+Replace all `<python_cmd>` with the detected interpreter.
+
+#### v1 format (Kiro < 0.12.315) — `.kiro.hook` files
+
+Use these if the consumer's Kiro version is older than `0.12.315-insider`.
 
 **`stm-reflect.kiro.hook`:**
 ```json
@@ -173,7 +287,7 @@ Write to `.kiro/hooks/`:
   "when": { "type": "userTriggered" },
   "then": {
     "type": "askAgent",
-    "prompt": "Review the current session's work. First run `<python_cmd> stm/bin/stm.py topics` to see existing topic keys and `<python_cmd> stm/bin/stm.py recall --scope agent-behavior --limit 3` to check for relevant prior learnings. Then: (1) Identify 1-3 things that went well or poorly. If LTM is available, read `ltm/store/events.jsonl` (last 20 entries for this session) to ground observations in what actually happened. If LTM is absent, review recent git activity (`git log --oneline -5`, `git diff --stat`) and recent STM observations instead. For each insight, record via `<python_cmd> stm/bin/stm.py record` with --source agent:reflect. Include --cue when you can identify the situational trigger. (2) If you applied any graduated learnings this session, record follow-up observations with --source agent:followup --applies-to <cluster_id> --outcome <confirmed|mixed|failed>. (3) Briefly scan your observation patterns: run `<python_cmd> stm/bin/stm.py topics` and note if any scopes have zero observations — are you blind to issues there, or is that area genuinely stable? If you notice a gap, record a neutral observation noting it. Keep the whole reflection to 1-3 observations total."
+    "prompt": "<same prompt as v2 stm-reflect>"
   }
 }
 ```
@@ -183,12 +297,8 @@ Write to `.kiro/hooks/`:
 {
   "name": "STM Compress — Summarize Observation Groups",
   "version": "1.0.0",
-  "description": "Compresses raw observations into summaries, preserving 1-2 exemplar cases per group.",
   "when": { "type": "userTriggered" },
-  "then": {
-    "type": "askAgent",
-    "prompt": "Run `<python_cmd> stm/bin/stm.py compress --identify` to find compression candidates. For each candidate group: read all raw observations, select 1-2 as exemplars (prefer observations with cue fields, user:feedback source, or highest confidence), synthesize a single summary observation that combines the claims and evidence, then record it via `<python_cmd> stm/bin/stm.py record --source agent:compress --compressed-from <id1,id2,...>`. After recording all summaries, run `<python_cmd> stm/bin/stm.py compress --execute --ids <original_ids> --exemplars <exemplar_ids>` to mark originals as compressed and exemplars as preserved. Report what was compressed and estimated token savings."
-  }
+  "then": { "type": "askAgent", "prompt": "<same prompt as v2 stm-compress>" }
 }
 ```
 
@@ -197,12 +307,8 @@ Write to `.kiro/hooks/`:
 {
   "name": "STM Distill — Group, Score, and Merge",
   "version": "1.0.0",
-  "description": "Runs grouping/scoring on STM observations, then prompts agent to review merge candidates.",
   "when": { "type": "userTriggered" },
-  "then": {
-    "type": "askAgent",
-    "prompt": "Run `<python_cmd> stm/bin/stm.py distill` to group and score observations. If the output reports merge candidates, read `stm/runtime/merge-candidates.json` and for each candidate pair decide: merge (reassign to the same topic key and re-run distill) or keep separate. Report the distill summary."
-  }
+  "then": { "type": "askAgent", "prompt": "<same prompt as v2 stm-distill>" }
 }
 ```
 
@@ -211,12 +317,8 @@ Write to `.kiro/hooks/`:
 {
   "name": "STM Graduate — Synthesize Learning Proposals",
   "version": "1.0.0",
-  "description": "Agent reads pending clusters, synthesizes cue patterns and learning proposals with exemplar cases.",
   "when": { "type": "userTriggered" },
-  "then": {
-    "type": "askAgent",
-    "prompt": "Run `<python_cmd> stm/bin/stm.py pending-clusters` to get clusters ready for graduation. For each pending cluster: (1) verify it contains summary observations — skip if raw-only, (2) read all linked observations, (3) synthesize a cue_pattern from the observations' cue fields — this is the 'when you see X' trigger, (4) read the current state of affected project files, (5) synthesize a consensus claim and actionable recommendation, (6) include the exemplar case(s) in the learning file for narrative richness, (7) include application history if any follow-up observations exist, (8) generate a learning file following the Graduated Learning Template in the STM steering. After writing each file, run `<python_cmd> stm/bin/stm.py mark-graduated --cluster <id> --path <path>`. Also check for clusters flagged for reversal and generate reversal files. Report what was graduated, skipped, and what needs user review."
-  }
+  "then": { "type": "askAgent", "prompt": "<same prompt as v2 stm-graduate>" }
 }
 ```
 
@@ -225,12 +327,8 @@ Write to `.kiro/hooks/`:
 {
   "name": "STM Lifecycle — Compress, Distill, Graduate",
   "version": "1.0.0",
-  "description": "Runs the full STM lifecycle: compression, distillation, and graduation in sequence.",
   "when": { "type": "userTriggered" },
-  "then": {
-    "type": "askAgent",
-    "prompt": "Execute the STM lifecycle. Steps: (1) Check compression via `<python_cmd> stm/bin/stm.py status` — if compression_needed, run the compress procedure. (2) Run `<python_cmd> stm/bin/stm.py distill` and review merge candidates. (3) Check for pending clusters via `<python_cmd> stm/bin/stm.py pending-clusters` — if any, run the graduate procedure. (4) Report results."
-  }
+  "then": { "type": "askAgent", "prompt": "<same prompt as v2 stm-lifecycle>" }
 }
 ```
 
@@ -239,18 +337,14 @@ Write to `.kiro/hooks/`:
 {
   "name": "STM Auto-Reflect",
   "version": "1.1.0",
-  "description": "Lightweight end-of-turn observation capture. Records one observation if something notable happened, skips otherwise.",
   "when": { "type": "agentStop" },
-  "then": {
-    "type": "askAgent",
-    "prompt": "Did anything go notably well or poorly this turn — a decision that saved time, an approach that caused rework, a pattern you noticed, or user feedback? If you need grounding, run `<python_cmd> stm/bin/stm.py trace-summary --session-only --limit 10` to review recent tool activity. Also check `<python_cmd> stm/bin/stm.py learnings --cue \"<what you just did>\" --limit 2` to see if a graduated learning applied. If yes, record exactly one observation via `<python_cmd> stm/bin/stm.py record --scope <scope> --topic <topic> --stance <stance> --claim \"<one sentence>\" --evidence \"<what happened>\" --confidence <level> --source agent:reflect`. Include --cue if you can identify the situational trigger. If you applied a graduated learning, use --source agent:followup --applies-to <cluster_id> --outcome <confirmed|mixed|failed> instead. If nothing notable happened (routine operation, simple read, trivial change), respond with just: none."
-  }
+  "then": { "type": "askAgent", "prompt": "<same prompt as v2 stm-auto-reflect>" }
 }
 ```
 
-Replace all `<python_cmd>` with the detected interpreter.
+**v1 format mapping:** `"trigger": "Manual"` → `"when": {"type": "userTriggered"}`, `"trigger": "Stop"` → `"when": {"type": "agentStop"}`, `"action": {"type": "agent"}` → `"then": {"type": "askAgent"}`, `"action": {"type": "command"}` → `"then": {"type": "runCommand"}`.
 
-### 8. Create workspace steering files
+Replace all `<python_cmd>` with the detected interpreter. Use the full prompt text from the corresponding v2 hook — the prompts shown above as `<same prompt as v2 ...>` are abbreviated for readability.
 
 **`.kiro/steering/stm-observations.md`:**
 
@@ -425,6 +519,8 @@ stm/runtime/*
 
 ### 10. Create `stm/manifest.json`
 
+Use the hook file extensions that match the format installed in step 7 (`.json` for v2, `.kiro.hook` for v1).
+
 ```json
 {
   "created_by": "stm-power",
@@ -440,13 +536,13 @@ stm/runtime/*
     "stm/bin/stm.py"
   ],
   "hooks": [
-    ".kiro/hooks/stm-reflect.kiro.hook",
-    ".kiro/hooks/stm-compress.kiro.hook",
-    ".kiro/hooks/stm-distill.kiro.hook",
-    ".kiro/hooks/stm-graduate.kiro.hook",
-    ".kiro/hooks/stm-lifecycle.kiro.hook",
-    ".kiro/hooks/stm-auto-reflect.kiro.hook",
-    ".kiro/hooks/stm-tool-trace.kiro.hook"
+    ".kiro/hooks/stm-reflect.json",
+    ".kiro/hooks/stm-compress.json",
+    ".kiro/hooks/stm-distill.json",
+    ".kiro/hooks/stm-graduate.json",
+    ".kiro/hooks/stm-lifecycle.json",
+    ".kiro/hooks/stm-auto-reflect.json",
+    ".kiro/hooks/stm-tool-trace.json"
   ],
   "steering": [
     ".kiro/steering/stm-observations.md",
@@ -484,6 +580,28 @@ Ask the user: "Should introspection data be shared with the team (committed to r
 Adjust the `.gitignore` block written in step 9 based on the choice.
 
 ### 11c. Install Tool-Trace Hook
+
+#### v2 format (Kiro 0.12.315+)
+
+**`.kiro/hooks/stm-tool-trace.json`:**
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "STM Tool Trace — Passive Activity Capture",
+    "description": "Records tool invocations to stm/runtime/tool-trace.jsonl for reflection grounding.",
+    "trigger": "PostToolUse",
+    "matcher": "write|shell",
+    "action": {
+      "type": "command",
+      "command": "<python_cmd> stm/bin/stm.py trace --tool \"$TOOL_NAME\" --outcome \"$TOOL_OUTCOME\""
+    },
+    "enabled": true
+  }]
+}
+```
+
+#### v1 format (Kiro < 0.12.315)
 
 **`.kiro/hooks/stm-tool-trace.kiro.hook`:**
 ```json
@@ -548,7 +666,7 @@ If the agent detects a partial STM installation (e.g., `stm/` exists but is miss
    - If passes → script is good, skip steps 1–6.
    - If fails → rewrite script (step 6).
    - If missing → start from step 1.
-2. **Check hooks:** Look for `.kiro/hooks/stm-*.kiro.hook`. If all expected hooks exist, skip step 7 and 11c.
+2. **Check hooks:** Look for `.kiro/hooks/stm-*.json` (v2) or `.kiro/hooks/stm-*.kiro.hook` (v1). If all expected hooks exist in either format, skip step 7 and 11c. If only v1 hooks exist and Kiro is 0.12.315+, offer to migrate (delete v1, write v2).
 3. **Check steering:** Look for `.kiro/steering/stm-observations.md` and `.kiro/steering/stm-memory-format.md`. If present, skip step 8.
 4. **Check .gitignore:** Look for `# --- stm-power ---` delimiter. If present, skip step 9.
 5. **Check manifest:** If `stm/manifest.json` exists with correct `created_by`, skip step 10.
