@@ -6,7 +6,7 @@
 
 1. **Detect Python:** Try `python3 --version`, then `python --version`. Require >= 3.9. Store as `python_cmd`. If unavailable → Degraded Bootstrap below.
 2. **Check platform:** If Windows (`os.name == "nt"`), warn: "Windows is not a tested v1 target."
-3. **Check conflicts:** Look for existing `.kiro/hooks/ltm-*.kiro.hook` or `.kiro/steering/ltm-*.md`. If found, report and ask.
+3. **Check conflicts:** Look for existing `.kiro/hooks/ltm-*.json` or `.kiro/hooks/ltm-*.kiro.hook` or `.kiro/steering/ltm-*.md`. If found, report and ask.
 4. **Check existing `ltm/`:** If it exists with `config.json` containing `"created_by": "ltm-power"` → Case B or C below. Without the marker → report conflict and ask.
 
 ---
@@ -122,7 +122,7 @@ Project-local memory managed by ltm-power.
 **Commit:** `ltm/bin/ltm.py`, `ltm/config.json`, `ltm/manifest.json`, this README.
 **Do NOT commit:** `ltm/store/`, `ltm/runtime/`, `ltm/reports/`, `ltm/snapshots/`.
 
-If the hook uses an absolute path, review `.kiro/hooks/ltm-postturn-capture.kiro.hook` before committing.
+If the hook uses an absolute path, review `.kiro/hooks/ltm-postturn-capture.json` (or `.kiro/hooks/ltm-postturn-capture.kiro.hook` on older Kiro versions) before committing.
 
 ## Commands
 
@@ -180,7 +180,27 @@ These steps can be done in any order.
 
 ### 7. Create capture hook
 
-Write to `.kiro/hooks/ltm-postturn-capture.kiro.hook`:
+**Determine hook format:** Check the consumer's Kiro version. If Kiro `0.12.315-insider` or later → write only the v2 `.json` file. If Kiro `0.12.138-stable` or earlier → write only the v1 `.kiro.hook` file. If the version is unknown or the project is shared across contributors on different versions → write BOTH files.
+
+**`.kiro/hooks/ltm-postturn-capture.json`** (v2 — Kiro 0.12.315+):
+
+```json
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "LTM Post-Turn Capture",
+    "description": "Records agent activity to LTM memory store after each turn",
+    "trigger": "Stop",
+    "action": {
+      "type": "command",
+      "command": "<python_cmd> ltm/bin/ltm.py capture-turn"
+    },
+    "enabled": true
+  }]
+}
+```
+
+**`.kiro/hooks/ltm-postturn-capture.kiro.hook`** (v1 — older Kiro or shared projects):
 
 ```json
 {
@@ -194,6 +214,8 @@ Write to `.kiro/hooks/ltm-postturn-capture.kiro.hook`:
   }
 }
 ```
+
+When both are written, note in the success report: "The `.kiro.hook` file can be removed once all contributors are on Kiro 0.12.315+."
 
 ### 8. Create workspace steering files
 
@@ -297,7 +319,7 @@ ltm/snapshots/*
     "ltm/runtime/current-session.json", "ltm/runtime/health.json",
     "ltm/bin/ltm.py"
   ],
-  "hooks": [".kiro/hooks/ltm-postturn-capture.kiro.hook"],
+  "hooks": [".kiro/hooks/ltm-postturn-capture.json", ".kiro/hooks/ltm-postturn-capture.kiro.hook"],
   "steering": [".kiro/steering/ltm-operations.md", ".kiro/steering/ltm-memory-format.md"],
   "managed_patches": [{"file": ".gitignore", "start_delimiter": "# --- ltm-power ---", "end_delimiter": "# --- /ltm-power ---"}]
 }

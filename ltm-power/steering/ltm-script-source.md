@@ -2,7 +2,7 @@
 
 This file contains the canonical `ltm.py` source code. It is loaded only when the agent needs to write the script to a project — during bootstrap or repair.
 
-**Expected SHA-256:** `0e5733a73e61887657bf396aeafb9b0cc3b6c5218583eec89cb7fecf58597092`
+**Expected SHA-256:** `62b1c0fb4e7ca22272a1d1f1be7da24a82410ede0e9cc50f652462014e1528bf`
 
 Write the contents of the fenced code block below exactly to `ltm/bin/ltm.py`. After writing, verify using the chunked write procedure and gates in `ltm-bootstrap.md` Phase 2. If the SHA-256 hash matches the expected value above, record it in the manifest. If the hash doesn't match but `selftest --quick` passes, the script is functionally correct — write tool artifacts (extra newlines from chunked appends) can cause benign hash mismatches.
 
@@ -532,8 +532,9 @@ def cmd_health(args):
     except Exception:
         h["e2e_probe"] = "fail"
     # 8. hook status
-    hook_path = Path(".kiro/hooks/ltm-postturn-capture.kiro.hook")
-    if hook_path.exists():
+    hook_v2 = Path(".kiro/hooks/ltm-postturn-capture.json")
+    hook_v1 = Path(".kiro/hooks/ltm-postturn-capture.kiro.hook")
+    if hook_v2.exists() or hook_v1.exists():
         # check if any events have source hook:agentStop
         if any(e.get("source") == "hook:agentStop" for e in events):
             h["hook_status"] = "verified"
@@ -799,6 +800,8 @@ def cmd_teardown(args):
         if ROOT.exists():
             shutil.rmtree(ROOT)
         for p in Path(".kiro/hooks").glob("ltm-*.kiro.hook"):
+            p.unlink()
+        for p in Path(".kiro/hooks").glob("ltm-*.json"):
             p.unlink()
         for p in Path(".kiro/steering").glob("ltm-*.md"):
             p.unlink()
