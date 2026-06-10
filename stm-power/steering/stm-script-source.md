@@ -2,13 +2,13 @@
 
 This file contains the canonical `stm.py` source code. It is loaded only when the agent needs to write the script to a project — during bootstrap or repair.
 
-**Expected SHA-256:** `56e51b09b9963de6a8df0f116adb78045c36ee5f9bb85dd816f1a1977265c756`
+**Expected SHA-256:** `e2ea7d1840bf08733dd358c87ba42ba4d6e0c7dfcd69a9102450aeb50967c0d8`
 
-**Line count:** 1179
+**Line count:** 1228
 
 Write the contents of the fenced code block below exactly to `stm/bin/stm.py`. After writing, verify the SHA-256 hash matches the expected value above. If it does not match, report a generation error.
 
-**CRITICAL:** This file is large (~1179 lines). If your tool has write-size limits, use chunked writes (append mode) and verify line count after each chunk. Run `selftest --quick` immediately after writing to confirm the script is complete and functional. Do NOT proceed to hook installation until selftest passes.
+**CRITICAL:** This file is large (~1228 lines). If your tool has write-size limits, use chunked writes (append mode) and verify line count after each chunk. Run `selftest --quick` immediately after writing to confirm the script is complete and functional. Do NOT proceed to hook installation until selftest passes.
 
 ```python
 #!/usr/bin/env python3
@@ -21,7 +21,7 @@ runtime artifacts under stm/runtime/.
 import argparse, datetime, hashlib, json, os, re, sys, tempfile, unittest
 from pathlib import Path
 
-VERSION = "1.1.7"
+VERSION = "1.1.8"
 ROOT = Path("stm")
 STORE = ROOT / "store"
 RUNTIME = ROOT / "runtime"
@@ -961,6 +961,26 @@ def cmd_validate(args):
             if c.get("created_by") != "stm-power": issues.append("config.json: created_by is not stm-power")
         except json.JSONDecodeError:
             issues.append("config.json: invalid JSON")
+    # Check manifest hook paths exist
+    if MANIFEST_PATH.exists():
+        try:
+            m = json.loads(MANIFEST_PATH.read_text())
+            for hp in m.get("hooks", []):
+                hook_file = Path(hp)
+                if not hook_file.exists():
+                    # Check if a format-migrated equivalent exists
+                    if hp.endswith(".kiro.hook"):
+                        alt = hp.replace(".kiro.hook", ".json")
+                    elif hp.endswith(".json"):
+                        alt = hp.replace(".json", ".kiro.hook")
+                    else:
+                        alt = None
+                    if alt and Path(alt).exists():
+                        issues.append(f"manifest hook path stale: {hp} (migrated to {alt})")
+                    else:
+                        issues.append(f"manifest hook missing: {hp}")
+        except json.JSONDecodeError:
+            issues.append("manifest.json: invalid JSON")
     _out({"valid": len(issues) == 0, "issues": issues})
     if issues: sys.exit(1)
 
@@ -990,6 +1010,35 @@ def cmd_repair(args):
         ERRORS_PATH.write_text(""); repaired.append(f"created: {ERRORS_PATH}")
     if not TOOL_TRACE.exists():
         TOOL_TRACE.write_text(""); repaired.append(f"created: {TOOL_TRACE}")
+    # Repair stale hook paths in manifest (v1→v2 migration)
+    if MANIFEST_PATH.exists():
+        try:
+            m = json.loads(MANIFEST_PATH.read_text())
+            hooks = m.get("hooks", [])
+            updated_hooks = []
+            hooks_changed = False
+            for hp in hooks:
+                hook_file = Path(hp)
+                if hook_file.exists():
+                    updated_hooks.append(hp)
+                else:
+                    if hp.endswith(".kiro.hook"):
+                        alt = hp.replace(".kiro.hook", ".json")
+                    elif hp.endswith(".json"):
+                        alt = hp.replace(".json", ".kiro.hook")
+                    else:
+                        alt = None
+                    if alt and Path(alt).exists():
+                        updated_hooks.append(alt)
+                        hooks_changed = True
+                        repaired.append(f"manifest hook migrated: {hp} → {alt}")
+                    else:
+                        updated_hooks.append(hp)
+            if hooks_changed:
+                m["hooks"] = updated_hooks
+                _atomic_write_text(MANIFEST_PATH, json.dumps(m, indent=2))
+        except (json.JSONDecodeError, KeyError):
+            pass
     _out({"repaired": repaired})
 
 

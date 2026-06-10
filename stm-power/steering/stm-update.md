@@ -29,7 +29,7 @@ The user says "Update STM", "update introspection tooling", or equivalent.
 5. **Regenerate hooks:** Determine the hook format (v2 `.json` for Kiro 0.12.315+, v1 `.kiro.hook` for older). Write all STM hook files using the templates from `stm-bootstrap.md` step 7 with current `python_cmd`. This refreshes both the format and the prompt content to match the latest power version. If migrating from v1 to v2, delete old `.kiro.hook` files after writing `.json` replacements. Update the `hooks` array in `stm/manifest.json` to reflect the new filenames.
 6. **Regenerate workspace steering:** Write `.kiro/steering/stm-observations.md` and `.kiro/steering/stm-memory-format.md` from the templates in `stm-bootstrap.md` step 8.
 7. **Update config version:** Set `version` to the power's current version. Preserve all other fields.
-8. **Update manifest:** Update `stm_py_hash`, `version`, and timestamp. Preserve file lists.
+8. **Update manifest:** Update `stm_py_hash`, `version`, timestamp, and the `hooks` array (to reflect filenames written in step 5 — e.g. `.json` if migrated from `.kiro.hook`). Preserve `files` and `steering` arrays unless those changed too.
 9. **Run selftest:** `<python_cmd> stm/bin/stm.py selftest --quick`. If it fails, report and offer rollback.
 10. **Run health:** `<python_cmd> stm/bin/stm.py health`. Report results.
 11. **Report:** "STM tooling updated to v{version}. All observation data preserved."
