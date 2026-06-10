@@ -9,6 +9,7 @@ The user says "Update LTM", "update memory tooling", or equivalent.
 ## What gets updated
 
 - `ltm/bin/ltm.py` — replaced with the latest version from `ltm-script-source.md`.
+- `ltm/README.md` — regenerated from bootstrap template (step 5) with current hook filenames.
 - `.kiro/hooks/ltm-postturn-capture.json` and/or `.kiro/hooks/ltm-postturn-capture.kiro.hook` — regenerated with current `python_cmd` (format depends on Kiro version; see step 5).
 - `.kiro/steering/ltm-operations.md` — regenerated from bootstrap template.
 - `.kiro/steering/ltm-memory-format.md` — regenerated from bootstrap template.
@@ -35,12 +36,13 @@ The user says "Update LTM", "update memory tooling", or equivalent.
    - If both exist → regenerate both.
    - If neither exists → scaffold per the version-detection logic.
    - Update the `hooks` list in `ltm/manifest.json` to reflect whichever file(s) now exist.
-6. **Regenerate workspace steering:** Write `.kiro/steering/ltm-operations.md` and `.kiro/steering/ltm-memory-format.md` from the templates in `ltm-bootstrap.md` step 8.
-7. **Update config version:** Set `version` to the power's current version. Preserve all other fields.
-8. **Update manifest:** Update `ltm_py_hash`, `version`, timestamp, and `hooks` list (to reflect current hook file(s) from step 5). Preserve other file lists.
-9. **Run selftest:** `<python_cmd> ltm/bin/ltm.py selftest --quick`. If it fails, report and offer rollback.
-10. **Run health:** `<python_cmd> ltm/bin/ltm.py health`. Report results.
-11. **Report:** "LTM tooling updated to v{version}. All memory data preserved."
+6. **Regenerate README:** Write `ltm/README.md` from the template in `ltm-bootstrap.md` step 5, substituting current `python_cmd` and hook filename(s).
+7. **Regenerate workspace steering:** Write `.kiro/steering/ltm-operations.md` and `.kiro/steering/ltm-memory-format.md` from the templates in `ltm-bootstrap.md` step 8.
+8. **Update config version:** Set `version` to the power's current version. Preserve all other fields.
+9. **Update manifest:** Update `ltm_py_hash`, `version`, timestamp, and `hooks` list (to reflect current hook file(s) from step 5). Preserve other file lists.
+10. **Run selftest:** `<python_cmd> ltm/bin/ltm.py selftest --quick`. If it fails, report and offer rollback.
+11. **Run health:** `<python_cmd> ltm/bin/ltm.py health`. Report results.
+12. **Report:** "LTM tooling updated to v{version}. All memory data preserved."
 
 ## Rollback
 
